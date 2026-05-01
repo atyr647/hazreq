@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Audit log — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>Catalog audit log</h1>
+  <a href="{{ url_for('admin_home') }}">← Admin</a>
+</div>
+
+<div class="card">
+  <form method="get" action="{{ url_for('admin_log') }}">
+    <div class="field-row">
+      <div class="field">
+        <label>Entity</label>
+        <select name="entity_type">
+          <option value="" {% if not entity_type %}selected{% endif %}>All</option>
+          <option value="mip" {% if entity_type == 'mip' %}selected{% endif %}>MIP</option>
+          <option value="mrc" {% if entity_type == 'mrc' %}selected{% endif %}>MRC</option>
+          <option value="spmig" {% if entity_type == 'spmig' %}selected{% endif %}>SPMIG</option>
+          <option value="hazmat_item" {% if entity_type == 'hazmat_item' %}selected{% endif %}>Hazmat item</option>
+          <option value="mrc_item" {% if entity_type == 'mrc_item' %}selected{% endif %}>MRC↔item link</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Action</label>
+        <select name="action">
+          <option value="" {% if not action %}selected{% endif %}>All</option>
+          <option value="create" {% if action == 'create' %}selected{% endif %}>Create</option>
+          <option value="update" {% if action == 'update' %}selected{% endif %}>Update</option>
+          <option value="delete" {% if action == 'delete' %}selected{% endif %}>Delete</option>
+        </select>
+      </div>
+      <div class="field"><label>Search</label><input name="q" value="{{ q }}" placeholder="Match key or summary"></div>
+    </div>
+    <button type="submit" class="primary">Filter</button>
+    <a href="{{ url_for('admin_log') }}" class="btn">Reset</a>
+  </form>
+</div>
+
+<div class="card">
+  {% if rows %}
+    <table class="data">
+      <thead>
+        <tr>
+          <th>When (UTC)</th>
+          <th>Action</th>
+          <th>Entity</th>
+          <th>Key</th>
+          <th>Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td style="white-space:nowrap">{{ row.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <td>
+            {% if row.action == 'create' %}<span class="badge final">CREATE</span>
+            {% elif row.action == 'update' %}<span class="badge draft">UPDATE</span>
+            {% elif row.action == 'delete' %}<span class="badge danger">DELETE</span>
+            {% else %}{{ row.action }}{% endif %}
+          </td>
+          <td>{{ row.entity_type }}</td>
+          <td>{{ row.entity_key }}</td>
+          <td>
+            {{ row.summary }}
+            {% if row.details_json %}
+              <details><summary class="muted" style="cursor:pointer">details</summary>
+                <pre style="font-size:.8rem; background:#f5f5f0; padding:.4rem; border-radius:4px; overflow:auto">{{ row.details_json }}</pre>
+              </details>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No audit entries match these filters.</div>
+  {% endif %}
+</div>
+{% endblock %}

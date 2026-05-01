@@ -18,7 +18,7 @@ def test_export_then_import_round_trip(client, session):
     session.add(mip); session.flush()
     mrc = MRC(mip_id=mip.id, code="M-1", periodicity="Monthly")
     session.add(mrc); session.flush()
-    session.add(MRCItem(mrc_id=mrc.id, hazmat_item_id=item.id, default_qty=3, sort_order=10))
+    session.add(MRCItem(mrc_id=mrc.id, hazmat_item_id=item.id, sort_order=10))
     session.commit()
 
     payload = csvio.export_zip(session)

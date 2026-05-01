@@ -8,7 +8,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     DateTime,
-    Float,
+    Float,  # used by RequestLine.qty
     ForeignKey,
     Integer,
     String,
@@ -86,7 +86,12 @@ class HazmatItem(Base, TimestampMixin):
 
 
 class MRCItem(Base):
-    """Join table: which hazmat items belong to which MRC."""
+    """Join table: which hazmat items belong to which MRC.
+
+    Quantity is intentionally NOT stored here — every line on a request
+    starts at qty=1 and is operator-overridden per request. Pre-baking
+    qty per (MRC, item) caused defaults to drift from real-world usage.
+    """
 
     __tablename__ = "mrc_item"
 
@@ -96,7 +101,6 @@ class MRCItem(Base):
     hazmat_item_id: Mapped[int] = mapped_column(
         ForeignKey("hazmat_item.id", ondelete="RESTRICT"), primary_key=True
     )
-    default_qty: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     mrc: Mapped[MRC] = relationship(back_populates="items")
@@ -156,3 +160,25 @@ class RequestLine(Base):
     qty: Mapped[float | None] = mapped_column(Float)
 
     request: Mapped[Request] = relationship(back_populates="lines")
+
+
+class AuditLog(Base):
+    """Append-only record of catalog mutations.
+
+    Captures inserts/updates/deletes on MIP, MRC, SPMIG, HazmatItem,
+    MRCItem. Request/RequestLine activity is operational and excluded.
+
+    `entity_key` is the natural key (MIP code, "MIP/MRC", SPMIG code,
+    etc.) so the log stays useful even after the row is deleted.
+    """
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(16), nullable=False)  # create | update | delete
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    entity_id: Mapped[int | None] = mapped_column(Integer)
+    entity_key: Mapped[str] = mapped_column(String(256), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    details_json: Mapped[str | None] = mapped_column(Text)

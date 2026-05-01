@@ -65,6 +65,12 @@
 </div>
 
 <div class="card">
+  <h2>Audit log</h2>
+  <p class="muted">Append-only record of catalog changes (MIPs, MRCs, SPMIGs, items, links). Browse and filter by entity, action, or text.</p>
+  <a href="{{ url_for('admin_log') }}" class="btn">Open audit log →</a>
+</div>
+
+<div class="card">
   <h2>Recent backups (cron)</h2>
   {% if backups %}
     <ul>{% for b in backups %}<li>{{ b.name }}</li>{% endfor %}</ul>

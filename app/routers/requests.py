@@ -63,11 +63,23 @@ def list_requests(
     )
     if q.strip():
         like = f"%{q.strip()}%"
+        # Match on header fields OR the snapshot fields of any line.
+        # (Snapshot fields make the search future-proof — they don't
+        #  change when the catalog is edited later.)
+        line_match = (
+            select(RequestLine.request_id)
+            .where(
+                (RequestLine.nomenclature.ilike(like))
+                | (RequestLine.spmig_code.ilike(like))
+                | (RequestLine.niin.ilike(like))
+            )
+        )
         stmt = stmt.where(
             (ReqModel.requestor_name.ilike(like))
             | (ReqModel.workcenter.ilike(like))
             | (ReqModel.lpo.ilike(like))
             | (ReqModel.hazmat_location.ilike(like))
+            | (ReqModel.id.in_(line_match))
         )
     if status_filter == "draft":
         stmt = stmt.where(ReqModel.finalized_at.is_(None))
@@ -216,7 +228,7 @@ def add_line(
     spmig_code: str = Form(""),
     nomenclature: str = Form(""),
     niin: str = Form(""),
-    qty: float | None = Form(None),
+    qty: float = Form(1.0),
     db: Session = Depends(get_session),
 ):
     r = _get_request_or_404(db, request_id)
@@ -278,7 +290,7 @@ def load_mrc(
             spmig_code=item.spmig.code if item.spmig else None,
             nomenclature=item.nomenclature,
             niin=item.niin,
-            qty=link.default_qty,
+            qty=1,  # universal default; operator overrides per request
         )
         db.add(line)
         new_lines.append(line)

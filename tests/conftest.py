@@ -53,6 +53,7 @@ def _clean_db():
     from app.db import engine
 
     tables = [
+        "audit_log",
         "request_line",
         "request",
         "mrc_item",

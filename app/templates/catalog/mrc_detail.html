@@ -30,6 +30,7 @@
 
 <div class="card">
   <h2>Hazmat items in this MRC</h2>
+  <p class="muted">Quantity is set per request (default 1, operator-overridable). It's intentionally not stored on the link.</p>
   {% if mrc.items %}
     <table class="data">
       <thead>
@@ -37,7 +38,6 @@
           <th>SPMIG</th>
           <th>Nomenclature</th>
           <th>NIIN</th>
-          <th>Default qty</th>
           <th></th>
         </tr>
       </thead>
@@ -48,12 +48,6 @@
             <td>{{ hi.spmig.code if hi and hi.spmig else '—' }}</td>
             <td>{{ hi.nomenclature if hi else '(missing)' }}</td>
             <td>{{ hi.niin if hi else '' }}</td>
-            <td>
-              <form method="post" action="{{ url_for('update_mrc_item_qty', mrc_id=mrc.id, hazmat_item_id=link.hazmat_item_id) }}" class="row tight">
-                <input name="default_qty" type="number" step="any" value="{{ link.default_qty }}" style="width:6rem">
-                <button type="submit" class="small">Save</button>
-              </form>
-            </td>
             <td class="actions">
               <form method="post" action="{{ url_for('move_mrc_item', mrc_id=mrc.id, hazmat_item_id=link.hazmat_item_id) }}" style="display:inline">
                 <input type="hidden" name="direction" value="up">
@@ -79,23 +73,20 @@
 <div class="card">
   <h2>Add a hazmat item to this MRC</h2>
   <form method="post" action="{{ url_for('add_mrc_item', mrc_id=mrc.id) }}">
-    <div class="field-row">
-      <div class="field">
-        <label>Hazmat item</label>
-        <select name="hazmat_item_id" required>
-          <option value="">— pick an item —</option>
-          {% for sp in spmigs %}
-            {% if sp.items %}
-              <optgroup label="{{ sp.code }} — {{ sp.description or '' }}">
-                {% for it in sp.items %}
-                  <option value="{{ it.id }}">{{ it.nomenclature }}{% if it.niin %} (NIIN {{ it.niin }}){% endif %}</option>
-                {% endfor %}
-              </optgroup>
-            {% endif %}
-          {% endfor %}
-        </select>
-      </div>
-      <div class="field"><label>Default qty</label><input name="default_qty" type="number" step="any" value="1"></div>
+    <div class="field">
+      <label>Hazmat item</label>
+      <select name="hazmat_item_id" required>
+        <option value="">— pick an item —</option>
+        {% for sp in spmigs %}
+          {% if sp.items %}
+            <optgroup label="{{ sp.code }} — {{ sp.description or '' }}">
+              {% for it in sp.items %}
+                <option value="{{ it.id }}">{{ it.nomenclature }}{% if it.niin %} (NIIN {{ it.niin }}){% endif %}</option>
+              {% endfor %}
+            </optgroup>
+          {% endif %}
+        {% endfor %}
+      </select>
     </div>
     <button type="submit" class="primary">Attach item</button>
   </form>

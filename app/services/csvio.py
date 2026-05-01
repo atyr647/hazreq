@@ -107,7 +107,7 @@ def _export_mrcs(db: Session) -> str:
 
 
 def _export_mrc_items(db: Session) -> str:
-    s, w = _writer(["mip_code", "mrc_code", "spmig_code", "nomenclature", "niin", "default_qty", "sort_order"])
+    s, w = _writer(["mip_code", "mrc_code", "spmig_code", "nomenclature", "niin", "sort_order"])
     for link in (
         db.query(MRCItem)
         .join(MRC, MRCItem.mrc_id == MRC.id)
@@ -124,7 +124,6 @@ def _export_mrc_items(db: Session) -> str:
                 "spmig_code": link.hazmat_item.spmig.code,
                 "nomenclature": link.hazmat_item.nomenclature,
                 "niin": link.hazmat_item.niin or "",
-                "default_qty": link.default_qty,
                 "sort_order": link.sort_order,
             }
         )
@@ -330,16 +329,11 @@ def _import_mrc_items(db: Session, stream, report: ImportReport) -> None:
             )
             continue
         try:
-            default_qty = float(row.get("default_qty") or 1)
-        except ValueError:
-            default_qty = 1.0
-        try:
             sort_order = int(row.get("sort_order") or 0)
         except ValueError:
             sort_order = 0
         existing = db.get(MRCItem, {"mrc_id": mrc.id, "hazmat_item_id": item.id})
         if existing:
-            existing.default_qty = default_qty
             existing.sort_order = sort_order
             report.links_updated += 1
         else:
@@ -347,7 +341,6 @@ def _import_mrc_items(db: Session, stream, report: ImportReport) -> None:
                 MRCItem(
                     mrc_id=mrc.id,
                     hazmat_item_id=item.id,
-                    default_qty=default_qty,
                     sort_order=sort_order,
                 )
             )

@@ -219,6 +219,17 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 
 ---
 
+## Phase 12 — v0.3 (per follow-up clarifications)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 12.1 | Drop `mrc_item.default_qty`; universal default qty=1 with operator override | Done | Alembic migration `e827d8d69b10`; bulk-load + manual add-line both seed qty=1 |
+| 12.2 | Audit log (`audit_log` table) auto-captures catalog mutations | Done | SQLAlchemy `before_flush` hook in `app/services/audit.py`; viewer at `/admin/log` with entity/action/text filters |
+| 12.3 | Browse + search past requests extended to line content | Done | History search now matches nomenclature / SPMIG / NIIN of any line via subquery, plus existing header fields |
+| 12.4 | Pagination model clarified: pages don't change shape, just multiply rows | Acknowledged | docx backend handles natively (row loop + repeating header); fillable-PDF backend currently uses reportlab continuation — may switch to source-form cloning when the real form lands |
+
+---
+
 ## Deferred (post-v1)
 
 | # | Item | Notes |
@@ -226,7 +237,7 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 | D.1 | Fillable-PDF render path (swap behind `pdf_service`) | **Wired in 11.5** — activates with `HAZREQ_PDF_BACKEND=fillable_pdf` once a fillable form is provided |
 | D.2 | CSV catalog export/import | **Done in 11.6** |
 | D.3 | LAN passphrase / basic auth | Only if exposed beyond LAN |
-| D.4 | Audit log (who edited what) | Not requested; easy to add |
+| D.4 | Audit log (who edited what) | **Done in 12.2** |
 | D.5 | Multi-printer routing / direct print bypassing browser | **Done in 11.7** (CUPS `lp`, optional printer name) |
 | D.6 | Web port (ephemeral BYO-DB or client-side PWA) | Door is open; not on the build list |
 

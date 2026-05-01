@@ -15,10 +15,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import engine, get_session
+from app.models import AuditLog
 from app.services import csvio
 from app.services.pdf import _unoserver_alive
 from app.services.printer import default_printer, is_available as printing_available, list_printers
 from app.templating import render
+
+from sqlalchemy import select
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -182,5 +185,42 @@ async def admin_catalog_import(
         request,
         "admin_import_result.html",
         {"report": report},
+        nav="admin",
+    )
+
+
+# ============================================================
+# Audit log viewer
+# ============================================================
+
+@router.get("/log", name="admin_log")
+def admin_log(
+    request: Request,
+    db: Session = Depends(get_session),
+    entity_type: str = "",
+    action: str = "",
+    q: str = "",
+    limit: int = 200,
+):
+    stmt = select(AuditLog).order_by(AuditLog.ts.desc())
+    if entity_type:
+        stmt = stmt.where(AuditLog.entity_type == entity_type)
+    if action:
+        stmt = stmt.where(AuditLog.action == action)
+    if q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            (AuditLog.entity_key.ilike(like)) | (AuditLog.summary.ilike(like))
+        )
+    rows = db.execute(stmt.limit(max(1, min(limit, 1000)))).scalars().all()
+    return render(
+        request,
+        "admin_log.html",
+        {
+            "rows": rows,
+            "entity_type": entity_type,
+            "action": action,
+            "q": q,
+        },
         nav="admin",
     )

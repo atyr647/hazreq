@@ -28,8 +28,8 @@ def _seed(session):
     session.add_all([mrc_a, mrc_b]); session.flush()
 
     session.add_all([
-        MRCItem(mrc_id=mrc_a.id, hazmat_item_id=item1.id, default_qty=2, sort_order=10),
-        MRCItem(mrc_id=mrc_b.id, hazmat_item_id=item1.id, default_qty=5, sort_order=10),
+        MRCItem(mrc_id=mrc_a.id, hazmat_item_id=item1.id, sort_order=10),
+        MRCItem(mrc_id=mrc_b.id, hazmat_item_id=item1.id, sort_order=10),
     ])
     session.commit()
     return {"sp": sp, "item1": item1, "item2": item2, "mip": mip, "mrc_a": mrc_a, "mrc_b": mrc_b}
@@ -50,7 +50,7 @@ def test_bulk_load_snapshots_catalog_state(client, session):
     assert lines[0].spmig_code == "SPMIG-A"
     assert lines[0].nomenclature == "Oil 30W"
     assert lines[0].niin == "111"
-    assert lines[0].qty == 2
+    assert lines[0].qty == 1  # universal default
     assert lines[0].hazmat_item_id == s["item1"].id
 
 

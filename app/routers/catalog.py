@@ -190,7 +190,6 @@ def add_mrc_item(
     mrc_id: int,
     request: Request,
     hazmat_item_id: int = Form(...),
-    default_qty: float = Form(1.0),
     db: Session = Depends(get_session),
 ):
     mrc = db.get(MRC, mrc_id)
@@ -211,29 +210,11 @@ def add_mrc_item(
     link = MRCItem(
         mrc_id=mrc_id,
         hazmat_item_id=hazmat_item_id,
-        default_qty=default_qty,
         sort_order=next_order + 10,
     )
     db.add(link)
     db.commit()
     return RedirectResponse(request.url_for("view_mrc", mrc_id=mrc_id), status_code=303)
-
-
-@router.post("/mrcs/{mrc_id}/items/{hazmat_item_id}/qty", name="update_mrc_item_qty")
-def update_mrc_item_qty(
-    mrc_id: int,
-    hazmat_item_id: int,
-    default_qty: float = Form(...),
-    db: Session = Depends(get_session),
-):
-    link = db.get(MRCItem, {"mrc_id": mrc_id, "hazmat_item_id": hazmat_item_id})
-    if not link:
-        raise HTTPException(404)
-    link.default_qty = default_qty
-    db.commit()
-    return render_partial(
-        "catalog/_mrc_item_qty.html", {"link": link}
-    )
 
 
 @router.post("/mrcs/{mrc_id}/items/{hazmat_item_id}/move", name="move_mrc_item")

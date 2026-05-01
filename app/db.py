@@ -47,6 +47,11 @@ def _make_engine() -> Engine:
 engine = _make_engine()
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
+# Wire the audit-log listener once at import time.
+from app.services import audit as _audit  # noqa: E402
+
+_audit.install(SessionLocal)
+
 
 def get_session() -> Iterator:
     session = SessionLocal()
