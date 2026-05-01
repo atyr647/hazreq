@@ -17,9 +17,10 @@
   <h2>Header</h2>
   <div class="field-row">
     <div class="field">
-      <label>Date / Time</label>
+      <label>Date / Time (24h, editable)</label>
       <input type="datetime-local"
         name="datetime_of_request"
+        step="60"
         value="{{ r.datetime_of_request.strftime('%Y-%m-%dT%H:%M') if r.datetime_of_request else '' }}"
         data-hr-save="PATCH:{{ url_for('patch_request', request_id=r.id) }}">
     </div>
@@ -83,7 +84,7 @@
       <div class="field"><label>SPMIG</label><input name="spmig_code"></div>
       <div class="field"><label>Nomenclature</label><input name="nomenclature"></div>
       <div class="field"><label>NIIN</label><input name="niin"></div>
-      <div class="field"><label>Qty</label><input name="qty" type="number" step="any"></div>
+      <div class="field"><label>Qty (required)</label><input name="qty" type="number" step="any" min="0" required></div>
     </div>
     <button type="submit">+ Add line</button>
   </form>
@@ -102,6 +103,10 @@
     >Delete request</button>
     <form method="post" action="{{ url_for('finalize_request', request_id=r.id) }}" style="display:inline">
       <button type="submit" class="primary">Finalize & generate PDF</button>
+    </form>
+    <form method="post" action="{{ url_for('request_print', request_id=r.id) }}" style="display:inline"
+          onsubmit="return confirm('Finalize this request and send it directly to the printer?');">
+      <button type="submit" class="primary" title="Finalize, generate PDF, and send to default printer">Finalize & print</button>
     </form>
   </div>
 </div>

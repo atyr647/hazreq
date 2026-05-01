@@ -17,10 +17,16 @@ from app.models import (
     Request as ReqModel,
     RequestLine,
 )
+from pathlib import Path
+
+from app.services import printer as printer_service
 from app.services.pdf import PdfRenderError, render_request_pdf
 from app.templating import render, render_partial
 
+import logging
+
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 def _get_request_or_404(db: Session, request_id: int) -> ReqModel:
@@ -249,11 +255,21 @@ def load_mrc(
     if not mrc:
         raise HTTPException(404, "MRC not found")
 
+    # Dedup: never add a hazmat_item that's already on this request, even
+    # if it came from a different MRC. Manual lines (no hazmat_item_id)
+    # are out of scope for dedup since they're free-text.
+    already = {ln.hazmat_item_id for ln in r.lines if ln.hazmat_item_id is not None}
+
     base_sort = _next_sort(db, r.id)
     new_lines: list[RequestLine] = []
-    for offset, link in enumerate(mrc.items):
+    skipped: list[str] = []
+    offset = 0
+    for link in mrc.items:
         item = link.hazmat_item
         if not item:
+            continue
+        if item.id in already:
+            skipped.append(item.nomenclature)
             continue
         line = RequestLine(
             request_id=r.id,
@@ -266,13 +282,18 @@ def load_mrc(
         )
         db.add(line)
         new_lines.append(line)
+        already.add(item.id)
+        offset += 1
     if r.source_mip_id is None:
         r.source_mip_id = mrc.mip_id
         r.source_mrc_id = mrc.id
     db.commit()
     for line in new_lines:
         db.refresh(line)
-    return render_partial("requests/_lines_block.html", {"lines": new_lines, "r": r})
+    return render_partial(
+        "requests/_lines_block.html",
+        {"lines": new_lines, "r": r, "skipped": skipped},
+    )
 
 
 @router.patch("/{request_id}/lines/{line_id}", name="patch_line")
@@ -400,6 +421,15 @@ def finalize_request(request_id: int, request: Request, db: Session = Depends(ge
     r = _get_request_or_404(db, request_id)
     if not r.lines:
         raise HTTPException(400, "Cannot finalize an empty request")
+    # Every line must have a manually selected qty > 0. Defaults from the
+    # catalog get the user started, but qty is intentionally a per-request
+    # decision and finalize is the gate that enforces it.
+    missing = [ln for ln in r.lines if ln.qty is None or ln.qty <= 0]
+    if missing:
+        raise HTTPException(
+            400,
+            f"{len(missing)} line(s) need a quantity > 0 before finalizing.",
+        )
     try:
         path = render_request_pdf(r)
     except PdfRenderError as e:
@@ -413,12 +443,76 @@ def finalize_request(request_id: int, request: Request, db: Session = Depends(ge
     )
 
 
+@router.post("/{request_id}/reopen", name="reopen_request")
+def reopen_request(request_id: int, request: Request, db: Session = Depends(get_session)):
+    """Re-open a finalized request for further editing.
+
+    Clears finalized_at; pdf_path is left in place so the previously
+    generated PDF stays accessible until the next finalize overwrites it.
+    Intentionally available to anyone on the LAN — mirrors the rest of
+    the trust model. Confirmed via UI prompt before posting.
+    """
+    r = _get_request_or_404(db, request_id)
+    if not r.is_finalized:
+        # idempotent — re-opening an in-progress request is a no-op
+        return RedirectResponse(
+            request.url_for("view_request", request_id=r.id), status_code=303
+        )
+    r.finalized_at = None
+    db.commit()
+    log.info("Reopened request %s for editing", r.id)
+    return RedirectResponse(
+        request.url_for("view_request", request_id=r.id), status_code=303
+    )
+
+
 @router.get("/{request_id}/pdf", name="request_pdf")
 def request_pdf(request_id: int, db: Session = Depends(get_session)):
     r = _get_request_or_404(db, request_id)
     if not r.pdf_path:
         raise HTTPException(404, "No PDF generated yet — finalize the request first")
     return FileResponse(r.pdf_path, media_type="application/pdf", filename=f"hazreq-{r.id}.pdf")
+
+
+@router.post("/{request_id}/print", name="request_print")
+def request_print(
+    request_id: int,
+    request: Request,
+    printer_name: str = Form(""),
+    copies: int = Form(1),
+    db: Session = Depends(get_session),
+):
+    """Send the generated PDF to CUPS via `lp`. Auto-finalizes if needed."""
+    r = _get_request_or_404(db, request_id)
+    if not r.pdf_path:
+        # auto-finalize so a one-click "Print" is enough
+        if not r.lines:
+            raise HTTPException(400, "Cannot print an empty request")
+        missing = [ln for ln in r.lines if ln.qty is None or ln.qty <= 0]
+        if missing:
+            raise HTTPException(
+                400, f"{len(missing)} line(s) need a quantity > 0 before printing."
+            )
+        try:
+            path = render_request_pdf(r)
+        except PdfRenderError as e:
+            raise HTTPException(500, f"PDF generation failed: {e}") from None
+        if path is None:
+            raise HTTPException(500, "PDF persistence is disabled — cannot print")
+        if r.finalized_at is None:
+            r.finalized_at = datetime.utcnow()
+        r.pdf_path = str(path)
+        db.commit()
+    try:
+        job = printer_service.print_pdf(
+            Path(r.pdf_path), printer=(printer_name or None), copies=max(1, int(copies))
+        )
+    except printer_service.PrintError as e:
+        raise HTTPException(500, f"Print failed: {e}") from None
+    log.info("Submitted print job for request %s: %s", r.id, job)
+    return RedirectResponse(
+        request.url_for("view_request", request_id=r.id) + "?printed=1", status_code=303
+    )
 
 
 @router.get("/{request_id}/print-preview", name="print_preview")

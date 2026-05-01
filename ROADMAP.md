@@ -203,15 +203,31 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 
 ---
 
+## Phase 11 — v0.2 hardening (per follow-up requirements)
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 11.1 | Date / Time labelled "24h, editable"; manually fillable end-to-end | Done | `step="60"`; `%Y-%m-%d %H:%M` on PDF |
+| 11.2 | Re-open finalized request (admin action) | Done | `POST /requests/{id}/reopen`; clears `finalized_at`, leaves prior `pdf_path` until next finalize |
+| 11.3 | Dedup hazmat items on MRC bulk-load | Done | Skipped items reported in the inline notice |
+| 11.4 | Finalize requires manually filled `qty > 0` on every line | Done | Server-side validation + visual yellow flag in UI on missing-qty lines |
+| 11.5 | Fillable-PDF backend behind `HAZREQ_PDF_BACKEND=fillable_pdf` | Done | pypdf AcroForm fill; field-name convention documented in `app/services/pdf.py`; reportlab fallback for overflow page |
+| 11.6 | CSV catalog export / import (`.zip` round-trip) | Done | 5 CSVs (spmigs/mips/hazmat_items/mrcs/mrc_items) matched on natural keys; updates rather than duplicates |
+| 11.7 | Direct-to-printer via CUPS (`lp`) | Done | "Print to printer" + "Finalize & print" buttons; `HAZREQ_PRINTER` env override; auto-discovers printers via `lpstat -e` |
+| 11.8 | Restore endpoint also clears WAL/SHM sidecars | Done | Avoids stale-WAL replay when swapping the DB file |
+| 11.9 | pytest test suite (20 tests, ~1.3s) | Done | Covers MRC uniqueness, snapshot immutability, dedup, swap-alternate, finalize qty validation, finalize idempotency, reopen, CSV round-trip, restore, health |
+
+---
+
 ## Deferred (post-v1)
 
 | # | Item | Notes |
 |---|---|---|
-| D.1 | Fillable-PDF render path (swap behind `pdf_service`) | When a clean fillable PDF source is provided |
-| D.2 | JSON catalog export/import | `.db` round-trip is primary |
+| D.1 | Fillable-PDF render path (swap behind `pdf_service`) | **Wired in 11.5** — activates with `HAZREQ_PDF_BACKEND=fillable_pdf` once a fillable form is provided |
+| D.2 | CSV catalog export/import | **Done in 11.6** |
 | D.3 | LAN passphrase / basic auth | Only if exposed beyond LAN |
 | D.4 | Audit log (who edited what) | Not requested; easy to add |
-| D.5 | Multi-printer routing / direct print bypassing browser | If browser print proves clunky |
+| D.5 | Multi-printer routing / direct print bypassing browser | **Done in 11.7** (CUPS `lp`, optional printer name) |
 | D.6 | Web port (ephemeral BYO-DB or client-side PWA) | Door is open; not on the build list |
 
 ---
@@ -220,7 +236,7 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 
 | # | Question | For Phase | Notes |
 |---|---|---|---|
-| Q.1 | Will a cleaner source form (PDF or .docx) be provided? | 7 | Affects template prep effort |
-| Q.2 | Is the source form ever fillable PDF? | 7 / D.1 | Activates simpler render path |
-| Q.3 | Pi 400 LAN — is there an NTP source? | 8 | If not, install chrony or accept operator-set time |
-| Q.4 | Realistic max line count to design pagination around (worst case) | 7.8 | Plan default: test with 30+ |
+| Q.1 | Will a cleaner source form (PDF or .docx) be provided? | 7 / 11.5 | A few days out per follow-up |
+| Q.2 | Is the source form ever fillable PDF? | 7 / 11.5 | Yes — planned. Backend already wired |
+| Q.3 | Pi 400 LAN — is there an NTP source? | 8 | Resolved: date/time is operator-fillable, NTP not required |
+| Q.4 | Realistic max line count to design pagination around | 7.8 | Typical 12; no hard cap; docx loop + reportlab continuation handle overflow |

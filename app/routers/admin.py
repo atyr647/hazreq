@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import engine, get_session
+from app.services import csvio
 from app.services.pdf import _unoserver_alive
+from app.services.printer import default_printer, is_available as printing_available, list_printers
 from app.templating import render
 
 router = APIRouter()
@@ -42,11 +44,18 @@ def admin_home(request: Request, db: Session = Depends(get_session)):
         "db_writable": db_path is not None and (not db_path.exists() or db_path.parent.exists()),
         "unoserver_alive": _unoserver_alive(),
         "template_present": settings.template_path.exists(),
+        "pdf_backend": settings.pdf_backend,
+        "fillable_pdf_present": (
+            settings.fillable_pdf_path is not None and settings.fillable_pdf_path.exists()
+        ),
         "pdf_dir": str(settings.pdf_dir),
         "backup_dir": str(settings.backup_dir),
         "db_path": str(db_path) if db_path else "(non-sqlite)",
         "db_size_mb": round(db_size / (1024 * 1024), 2),
         "pdf_count": pdf_count,
+        "printing_available": printing_available(),
+        "printers": list_printers(),
+        "default_printer": default_printer(),
     }
     return render(
         request, "admin.html", {"health": health, "backups": backups}, nav="admin"
@@ -113,8 +122,14 @@ async def admin_restore(file: UploadFile = File(...)):
 
         # Swap atomically; current connections will pick up the new DB
         # on next checkout (engine.dispose drops all pooled connections).
+        # Also remove the WAL/SHM sidecars so SQLite doesn't replay stale
+        # transactions against the new main file.
         engine.dispose()
         shutil.copyfile(tmp_path, db_path)
+        for sidecar in (db_path.with_suffix(db_path.suffix + "-wal"),
+                        db_path.with_suffix(db_path.suffix + "-shm")):
+            if sidecar.exists():
+                sidecar.unlink()
     finally:
         tmp_path.unlink(missing_ok=True)
 
@@ -128,5 +143,44 @@ def admin_health():
         "unoserver": _unoserver_alive(),
         "template": settings.template_path.exists(),
         "db": _db_path().exists() if _db_path() else False,
+        "pdf_backend": settings.pdf_backend,
+        "printing": printing_available(),
     }
     return payload
+
+
+# ============================================================
+# CSV catalog export / import
+# ============================================================
+
+@router.get("/catalog/export", name="admin_catalog_export")
+def admin_catalog_export(db: Session = Depends(get_session)):
+    payload = csvio.export_zip(db)
+    name = f"hazreq-catalog-{datetime.now().strftime('%Y%m%d-%H%M')}.zip"
+    return StreamingResponse(
+        io.BytesIO(payload),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post("/catalog/import", name="admin_catalog_import")
+async def admin_catalog_import(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_session),
+):
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(400, "Empty upload")
+    try:
+        report = csvio.import_zip(db, payload)
+    except zipfile.BadZipFile:
+        raise HTTPException(400, "Upload is not a valid .zip file") from None
+    log.info("CSV import: %s; errors=%d", report.summary(), len(report.errors))
+    return render(
+        request,
+        "admin_import_result.html",
+        {"report": report},
+        nav="admin",
+    )

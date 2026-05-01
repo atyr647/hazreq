@@ -41,9 +41,13 @@
 </div>
 
 <div class="card">
+  {% if request.query_params.get('printed') %}<p class="flash ok">Sent to printer.</p>{% endif %}
   <div class="row">
     {% if r.pdf_path %}
       <a href="{{ url_for('request_pdf', request_id=r.id) }}" class="btn primary" target="_blank">Download PDF</a>
+      <form method="post" action="{{ url_for('request_print', request_id=r.id) }}" style="display:inline">
+        <button type="submit" class="btn primary" title="Send to default CUPS printer">Print to printer</button>
+      </form>
     {% endif %}
     <a href="{{ url_for('print_preview', request_id=r.id) }}" class="btn" target="_blank">Print preview</a>
     <form method="post" action="{{ url_for('duplicate_request', request_id=r.id) }}" style="display:inline">
@@ -51,6 +55,10 @@
     </form>
     <form method="post" action="{{ url_for('finalize_request', request_id=r.id) }}" style="display:inline">
       <button type="submit" title="Re-render PDF from existing snapshot">Re-render PDF</button>
+    </form>
+    <form method="post" action="{{ url_for('reopen_request', request_id=r.id) }}" style="display:inline"
+          onsubmit="return confirm('Re-open this finalized request for editing? The current PDF will be replaced when you re-finalize.');">
+      <button type="submit" title="Unlock for further edits">Re-open for edit</button>
     </form>
     <span class="spacer"></span>
     <button

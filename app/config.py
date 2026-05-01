@@ -27,11 +27,16 @@ class Settings:
     unoserver_host: str
     unoserver_port: int
     persist_pdfs: bool
+    pdf_backend: str
+    fillable_pdf_path: Path | None
+    printer: str | None
 
     @classmethod
     def load(cls) -> Settings:
         data_dir = _path("HAZREQ_DATA_DIR", DEFAULT_DATA_DIR)
         db_default = f"sqlite:///{data_dir / 'hazreq.db'}"
+        fillable_default = data_dir / "templates" / "hazmat_chit_fillable.pdf"
+        fillable = _path("HAZREQ_FILLABLE_PDF_PATH", fillable_default)
         return cls(
             db_url=os.environ.get("HAZREQ_DB_URL", db_default),
             template_path=_path("HAZREQ_TEMPLATE_PATH", data_dir / "templates" / "hazmat_chit.docx"),
@@ -40,6 +45,9 @@ class Settings:
             unoserver_host=os.environ.get("HAZREQ_UNOSERVER_HOST", "127.0.0.1"),
             unoserver_port=int(os.environ.get("HAZREQ_UNOSERVER_PORT", "2003")),
             persist_pdfs=os.environ.get("HAZREQ_PERSIST_PDFS", "1") != "0",
+            pdf_backend=os.environ.get("HAZREQ_PDF_BACKEND", "docx").lower(),
+            fillable_pdf_path=fillable,
+            printer=(os.environ.get("HAZREQ_PRINTER") or None),
         )
 
 

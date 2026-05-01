@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Catalog import — hazreq{% endblock %}
+{% block content %}
+<h1>Catalog import result</h1>
+
+<div class="card">
+  <h2>Summary</h2>
+  <p>{{ report.summary() }}</p>
+
+  <table class="data" style="max-width:600px">
+    <tbody>
+      <tr><td>SPMIGs created</td><td>{{ report.spmigs_created }}</td></tr>
+      <tr><td>SPMIGs updated</td><td>{{ report.spmigs_updated }}</td></tr>
+      <tr><td>MIPs created</td><td>{{ report.mips_created }}</td></tr>
+      <tr><td>MIPs updated</td><td>{{ report.mips_updated }}</td></tr>
+      <tr><td>Hazmat items created</td><td>{{ report.items_created }}</td></tr>
+      <tr><td>Hazmat items updated</td><td>{{ report.items_updated }}</td></tr>
+      <tr><td>MRCs created</td><td>{{ report.mrcs_created }}</td></tr>
+      <tr><td>MRCs updated</td><td>{{ report.mrcs_updated }}</td></tr>
+      <tr><td>MRC↔item links created</td><td>{{ report.links_created }}</td></tr>
+      <tr><td>MRC↔item links updated</td><td>{{ report.links_updated }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+{% if report.errors %}
+<div class="card">
+  <h2>Warnings ({{ report.errors | length }})</h2>
+  <p class="muted">These rows were skipped. Fix the source data and re-import.</p>
+  <ul>
+    {% for err in report.errors %}<li>{{ err }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <a href="{{ url_for('admin_home') }}" class="btn">← Back to Admin</a>
+  <a href="{{ url_for('list_mips') }}" class="btn">View MIPs</a>
+  <a href="{{ url_for('list_spmigs') }}" class="btn">View SPMIGs</a>
+</div>
+{% endblock %}

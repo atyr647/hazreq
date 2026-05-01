@@ -1,3 +1,8 @@
+{% if skipped %}
+  <tr><td colspan="5" class="muted" style="background:#fff7e0; font-style:italic">
+    Skipped {{ skipped | length }} item(s) already on this request: {{ skipped | join(", ") }}
+  </td></tr>
+{% endif %}
 {% for line in lines %}
   {% include "requests/_line.html" %}
 {% endfor %}
