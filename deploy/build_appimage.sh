@@ -6,9 +6,11 @@
 # they're expected on the host (or skipped entirely if you switch
 # HAZREQ_PDF_BACKEND=fillable_pdf).
 #
-# Run on the SAME architecture you want the AppImage for. To build for
-# the Pi 400, run this on the Pi (or in an aarch64 chroot / qemu-static
-# environment).
+# By default builds for the host architecture. To cross-build for the
+# Pi 400 from an x86_64 box, set HAZREQ_BUILD_ARCH=aarch64; this needs
+# qemu-${arch}-static on PATH (extraction step) and the host's pip
+# fetches aarch64 wheels via --platform/--python-version, so the target
+# Python never has to execute during the build.
 #
 # Output: dist/hazreq-<arch>.AppImage
 set -euo pipefail
@@ -17,14 +19,23 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # ----- arch detection ----------------------------------------------
-ARCH="$(uname -m)"
+HOST_ARCH="$(uname -m)"
+ARCH="${HAZREQ_BUILD_ARCH:-$HOST_ARCH}"
 case "$ARCH" in
-  x86_64)  PY_ARCH="x86_64";   APPIMG_ARCH="x86_64" ;;
-  aarch64) PY_ARCH="aarch64";  APPIMG_ARCH="aarch64" ;;
-  armv7l)  PY_ARCH="armv7l";   APPIMG_ARCH="armhf"  ;;
+  x86_64)  PY_ARCH="x86_64";   APPIMG_ARCH="x86_64";  PIP_PLATFORM="manylinux2014_x86_64" ;;
+  aarch64) PY_ARCH="aarch64";  APPIMG_ARCH="aarch64"; PIP_PLATFORM="manylinux2014_aarch64" ;;
+  armv7l)  PY_ARCH="armv7l";   APPIMG_ARCH="armhf";   PIP_PLATFORM="manylinux2014_armv7l" ;;
   *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
-echo "==> Building for ${ARCH}"
+CROSS=0
+[ "$ARCH" != "$HOST_ARCH" ] && CROSS=1
+if [ "$CROSS" -eq 1 ]; then
+  QEMU="qemu-${ARCH}-static"
+  command -v "$QEMU" >/dev/null || { echo "Cross-build needs $QEMU on PATH" >&2; exit 1; }
+  echo "==> Cross-building for ${ARCH} on ${HOST_ARCH} (via ${QEMU})"
+else
+  echo "==> Building for ${ARCH}"
+fi
 
 PY_VERSION="${PY_VERSION:-3.11}"
 PY_FULL="${PY_FULL:-3.11.14}"
@@ -48,7 +59,11 @@ fi
 # ----- 2. Extract into a working AppDir ----------------------------
 APPDIR="$BUILD/AppDir"
 rm -rf "$APPDIR"
-( cd "$BUILD" && rm -rf squashfs-root && "$PY_AI" --appimage-extract >/dev/null )
+if [ "$CROSS" -eq 1 ]; then
+  ( cd "$BUILD" && rm -rf squashfs-root && "$QEMU" "$PY_AI" --appimage-extract >/dev/null )
+else
+  ( cd "$BUILD" && rm -rf squashfs-root && "$PY_AI" --appimage-extract >/dev/null )
+fi
 mv "$BUILD/squashfs-root" "$APPDIR"
 
 # ----- 3. Install Python dependencies into the AppDir's Python -----
@@ -56,18 +71,36 @@ mv "$BUILD/squashfs-root" "$APPDIR"
 # /opt/hazreq below and the AppRun puts that on PYTHONPATH. That means
 # we never need the pyproject to be fully package-ready, and bumping
 # the app code is a re-rsync rather than a re-pip-install.
-echo "==> Installing dependencies into AppDir"
-"$APPDIR/AppRun" -m pip install --no-cache-dir --upgrade pip
-"$APPDIR/AppRun" -m pip install --no-cache-dir \
-  'fastapi>=0.115' \
-  'uvicorn[standard]>=0.32' \
-  'sqlalchemy>=2.0' \
-  'alembic>=1.13' \
-  'jinja2>=3.1' \
-  'python-multipart>=0.0.12' \
-  'docxtpl>=0.18' \
-  'pypdf>=4.3' \
+DEPS=(
+  'fastapi>=0.115'
+  'uvicorn[standard]>=0.32'
+  'sqlalchemy>=2.0'
+  'alembic>=1.13'
+  'jinja2>=3.1'
+  'python-multipart>=0.0.12'
+  'docxtpl>=0.18'
+  'pypdf>=4.3'
   'reportlab>=4.0'
+)
+SITE="$APPDIR/opt/python3.11/lib/python3.11/site-packages"
+if [ "$CROSS" -eq 1 ]; then
+  # Cross: have host pip fetch wheels for the target platform straight
+  # into the bundled site-packages — keeps the target Python from ever
+  # having to run during build.
+  echo "==> Fetching ${ARCH} wheels with host pip into ${SITE}"
+  python3 -m pip install --no-cache-dir --quiet --upgrade \
+    --target "$SITE" \
+    --platform "$PIP_PLATFORM" \
+    --python-version 3.11 \
+    --implementation cp \
+    --abi cp311 \
+    --only-binary=:all: \
+    "${DEPS[@]}"
+else
+  echo "==> Installing dependencies into AppDir"
+  "$APPDIR/AppRun" -m pip install --no-cache-dir --upgrade pip
+  "$APPDIR/AppRun" -m pip install --no-cache-dir "${DEPS[@]}"
+fi
 
 # ----- 4. Bundle the application source + bundled assets -----------
 APP_DEST="$APPDIR/opt/hazreq"
@@ -148,8 +181,17 @@ cp "$REPO_ROOT/deploy/appimage/hazreq.desktop" "$APPDIR/usr/share/applications/h
 cp "$REPO_ROOT/deploy/appimage/hazreq.png" "$APPDIR/hazreq.png"
 
 # ----- 7. Run appimagetool -----------------------------------------
-TOOL="$BUILD/appimagetool-${APPIMG_ARCH}.AppImage"
-TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${APPIMG_ARCH}.AppImage"
+# Always download the host-arch appimagetool — it just calls mksquashfs
+# and embeds the runtime named by the ARCH env var, so a host-arch tool
+# can package any-arch AppDirs as long as ARCH is set correctly.
+case "$HOST_ARCH" in
+  x86_64)  TOOL_ARCH="x86_64" ;;
+  aarch64) TOOL_ARCH="aarch64" ;;
+  armv7l)  TOOL_ARCH="armhf" ;;
+  *) TOOL_ARCH="$HOST_ARCH" ;;
+esac
+TOOL="$BUILD/appimagetool-${TOOL_ARCH}.AppImage"
+TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${TOOL_ARCH}.AppImage"
 if [ ! -x "$TOOL" ]; then
   echo "==> Downloading appimagetool"
   if command -v curl >/dev/null; then
