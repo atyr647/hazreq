@@ -230,6 +230,18 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 
 ---
 
+## Phase 13 — AppImage packaging
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 13.1 | `deploy/build_appimage.sh` build pipeline | Done | Uses `python-appimage` for the bundled Python 3.11 + `appimagetool` for the final image; auto-detects host arch (x86_64 / aarch64 / armhf) |
+| 13.2 | `AppRun` launcher with first-run setup | Done | Resolves `~/.local/share/hazreq/` for writable state, runs Alembic migrations, generates docx template if missing, optionally opens browser |
+| 13.3 | Desktop entry + icon | Done | `deploy/appimage/hazreq.desktop` + 256×256 PNG icon (also mirrored to `app/static/icon.png`) |
+| 13.4 | LibreOffice / CUPS NOT bundled | By design | Expected on host (`apt install libreoffice-core libreoffice-writer cups-client`); becomes unnecessary once `HAZREQ_PDF_BACKEND=fillable_pdf` is active |
+| 13.5 | Build for Pi 400 must run on aarch64 | Documented | Cross-compile from x86_64 needs qemu-static + binfmt; simplest is to build *on* the Pi |
+
+---
+
 ## Deferred (post-v1)
 
 | # | Item | Notes |

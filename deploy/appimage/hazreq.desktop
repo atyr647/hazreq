@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=hazreq
+GenericName=Hazmat Request Generator
+Comment=Generate hazmat issue chits offline
+Exec=AppRun
+Icon=hazreq
+Terminal=true
+Categories=Office;Utility;
+StartupNotify=false
+X-AppImage-Version=0.3

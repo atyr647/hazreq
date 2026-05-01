@@ -29,15 +29,33 @@ starts uvicorn with auto-reload at <http://localhost:8000>.
 
 ## Deployment on a Pi 400
 
+Two paths — pick whichever fits.
+
+### A. AppImage (single-file portable binary)
+
+```bash
+./deploy/build_appimage.sh        # run on the SAME arch you're targeting
+./dist/hazreq-aarch64.AppImage    # ships in dist/, ~50 MB
+```
+
+The AppImage bundles Python 3.11 + every Python dep + the app source. It does **not** bundle LibreOffice or CUPS — those are expected on the host (`apt install libreoffice-core libreoffice-writer cups-client`). If you switch `HAZREQ_PDF_BACKEND=fillable_pdf` once a fillable form is provided, LibreOffice becomes optional.
+
+On first launch the AppImage:
+
+- creates `~/.local/share/hazreq/` for the SQLite DB, generated PDFs, backups
+- runs Alembic migrations
+- generates the starter docx template if missing
+- starts uvicorn on `127.0.0.1:8000` and opens the default browser (skip with `HAZREQ_NO_BROWSER=1`)
+
+Override anything via env vars (`HAZREQ_PORT`, `HAZREQ_HOST`, `HAZREQ_DATA_DIR`, etc.). Build for the Pi 400 by running the script *on* the Pi (cross-compiling AppImages is doable but messier — qemu-static + binfmt).
+
+### B. systemd install (always-on background service)
+
 ```bash
 sudo ./deploy/install.sh
 ```
 
-Installs LibreOffice (for PDF conversion), creates a `hazreq` user, copies
-the app to `/opt/hazreq`, sets up `/var/lib/hazreq` for data, registers two
-systemd services (`hazreq` and `hazreq-unoserver`), advertises the app on
-mDNS (`hazreq.local:8000`), installs the system menu launcher, and sets up
-nightly SQLite backups.
+Installs LibreOffice (for PDF conversion), creates a `hazreq` user, copies the app to `/opt/hazreq`, sets up `/var/lib/hazreq` for data, registers two systemd services (`hazreq` and `hazreq-unoserver`), advertises the app on mDNS (`hazreq.local:8000`), installs the system menu launcher, and sets up nightly SQLite backups.
 
 ## Configuration
 
