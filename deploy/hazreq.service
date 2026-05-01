@@ -1,0 +1,25 @@
+[Unit]
+Description=hazreq — hazmat request app
+After=network.target hazreq-unoserver.service
+Wants=hazreq-unoserver.service
+
+[Service]
+Type=simple
+User=hazreq
+Group=hazreq
+WorkingDirectory=/opt/hazreq
+Environment="HAZREQ_DATA_DIR=/var/lib/hazreq"
+Environment="HAZREQ_DB_URL=sqlite:////var/lib/hazreq/hazreq.db"
+Environment="HAZREQ_TEMPLATE_PATH=/var/lib/hazreq/templates/hazmat_chit.docx"
+Environment="HAZREQ_PDF_DIR=/var/lib/hazreq/pdfs"
+Environment="HAZREQ_BACKUP_DIR=/var/lib/hazreq/backups"
+ExecStart=/opt/hazreq/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=3
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

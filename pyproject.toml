@@ -1,0 +1,23 @@
+[project]
+name = "hazreq"
+version = "0.1.0"
+description = "Offline hazmat request generator for Raspberry Pi 400."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.12",
+  "docxtpl>=0.18",
+  "pypdf>=4.3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]

@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Request #{{ r.id }} — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <div>
+    <h1>Request #{{ r.id }}</h1>
+    <p class="muted">
+      <span class="badge draft">Draft</span>
+      Auto-saves as you type.
+      <span data-hr-status></span>
+    </p>
+  </div>
+  <a href="{{ url_for('list_requests') }}">All requests →</a>
+</div>
+
+<div class="card" data-hr-form>
+  <h2>Header</h2>
+  <div class="field-row">
+    <div class="field">
+      <label>Date / Time</label>
+      <input type="datetime-local"
+        name="datetime_of_request"
+        value="{{ r.datetime_of_request.strftime('%Y-%m-%dT%H:%M') if r.datetime_of_request else '' }}"
+        data-hr-save="PATCH:{{ url_for('patch_request', request_id=r.id) }}">
+    </div>
+    <div class="field">
+      <label>Hazmat location</label>
+      <input name="hazmat_location" value="{{ r.hazmat_location or '' }}"
+        data-hr-save="PATCH:{{ url_for('patch_request', request_id=r.id) }}">
+    </div>
+    <div class="field">
+      <label>Name (requestor)</label>
+      <input name="requestor_name" value="{{ r.requestor_name or '' }}"
+        data-hr-save="PATCH:{{ url_for('patch_request', request_id=r.id) }}">
+    </div>
+    <div class="field">
+      <label>Workcenter</label>
+      <input name="workcenter" value="{{ r.workcenter or '' }}"
+        data-hr-save="PATCH:{{ url_for('patch_request', request_id=r.id) }}">
+    </div>
+    <div class="field">
+      <label>LPO</label>
+      <input name="lpo" value="{{ r.lpo or '' }}"
+        data-hr-save="PATCH:{{ url_for('patch_request', request_id=r.id) }}">
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Load items from an MRC</h2>
+  <p class="muted">Search by MIP code, MRC code, or any keyword. Click a result to append all of its items.</p>
+  <input type="search"
+    placeholder="e.g. MIP-1234 M-1"
+    data-hr-search="{{ url_for('search_mrc') }}"
+    data-hr-target="mrc-search-results"
+    data-hr-min="1">
+  <div id="mrc-search-results"></div>
+</div>
+
+<div class="card">
+  <h2>Line items</h2>
+  <table class="data lines">
+    <thead>
+      <tr>
+        <th>SPMIG / SPIN</th>
+        <th>Nomenclature</th>
+        <th>NIIN</th>
+        <th>Qty</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="lines-tbody">
+      {% for line in r.lines %}
+        {% include "requests/_line.html" %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>Add a manual line</h3>
+  <form id="add-line-form" method="post" action="{{ url_for('add_line', request_id=r.id) }}"
+        data-hr-form data-hr-target="lines-tbody" data-hr-swap="append" data-hr-reset="1">
+    <div class="field-row">
+      <div class="field"><label>SPMIG</label><input name="spmig_code"></div>
+      <div class="field"><label>Nomenclature</label><input name="nomenclature"></div>
+      <div class="field"><label>NIIN</label><input name="niin"></div>
+      <div class="field"><label>Qty</label><input name="qty" type="number" step="any"></div>
+    </div>
+    <button type="submit">+ Add line</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="row">
+    <a href="{{ url_for('print_preview', request_id=r.id) }}" class="btn" target="_blank">Print preview</a>
+    <span class="spacer"></span>
+    <button
+      type="button"
+      class="danger"
+      data-hr-action="POST:{{ url_for('delete_request', request_id=r.id) }}"
+      data-hr-confirm="Delete this request? This cannot be undone."
+      data-hr-reload="1"
+    >Delete request</button>
+    <form method="post" action="{{ url_for('finalize_request', request_id=r.id) }}" style="display:inline">
+      <button type="submit" class="primary">Finalize & generate PDF</button>
+    </form>
+  </div>
+</div>
+
+<script>
+// Wire up "Add to request" buttons inside dynamically loaded MRC search results.
+document.addEventListener('click', async function (ev) {
+  const btn = ev.target.closest('[data-load-mrc]');
+  if (!btn) return;
+  ev.preventDefault();
+  const mrcId = btn.dataset.loadMrc;
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  try {
+    const fd = new FormData();
+    fd.append('mrc_id', mrcId);
+    const resp = await fetch('{{ url_for("load_mrc", request_id=r.id) }}', { method: 'POST', body: fd });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const html = await resp.text();
+    const tbody = document.getElementById('lines-tbody');
+    const tmp = document.createElement('tbody');
+    tmp.innerHTML = html;
+    while (tmp.firstChild) {
+      const node = tmp.firstChild;
+      tbody.appendChild(node);
+      if (node.nodeType === 1 && window.hazreq) window.hazreq.bind(node);
+    }
+    btn.textContent = 'Added';
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Add to request';
+    alert('Failed to add: ' + e.message);
+  }
+});
+
+// Delete and swap-alternate behavior on lines.
+document.addEventListener('click', async function (ev) {
+  const del = ev.target.closest('[data-delete-line]');
+  if (del) {
+    ev.preventDefault();
+    if (!confirm('Delete this line?')) return;
+    const lineId = del.dataset.deleteLine;
+    try {
+      const resp = await fetch(`/requests/{{ r.id }}/lines/${lineId}/delete`, { method: 'POST' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const tr = del.closest('tr'); if (tr) tr.remove();
+    } catch (e) { alert('Delete failed: ' + e.message); }
+    return;
+  }
+  const alt = ev.target.closest('[data-alt-toggle]');
+  if (alt) {
+    ev.preventDefault();
+    const lineId = alt.dataset.altToggle;
+    const tray = document.getElementById('alt-' + lineId);
+    if (!tray) return;
+    if (tray.dataset.loaded !== '1') {
+      try {
+        const resp = await fetch(`/requests/{{ r.id }}/lines/${lineId}/alternates`);
+        tray.innerHTML = await resp.text();
+        tray.dataset.loaded = '1';
+        if (window.hazreq) window.hazreq.bind(tray);
+      } catch (e) { tray.innerHTML = '<div class="empty">Failed to load alternates</div>'; }
+    }
+    tray.classList.toggle('hidden');
+  }
+});
+</script>
+{% endblock %}

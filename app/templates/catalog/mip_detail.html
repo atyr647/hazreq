@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}MIP {{ mip.code }} — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>{{ mip.code }}</h1>
+  <a href="{{ url_for('list_mips') }}">← All MIPs</a>
+</div>
+
+<div class="card">
+  <h2>MIP details</h2>
+  <form method="post" action="{{ url_for('edit_mip', mip_id=mip.id) }}">
+    <div class="field-row">
+      <div class="field"><label>Code</label><input name="code" value="{{ mip.code }}" required></div>
+      <div class="field"><label>Title</label><input name="title" value="{{ mip.title or '' }}"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea name="notes">{{ mip.notes or '' }}</textarea></div>
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      <span class="spacer"></span>
+      <button
+        type="button"
+        class="danger"
+        data-hr-action="POST:{{ url_for('delete_mip', mip_id=mip.id) }}"
+        data-hr-confirm="Delete MIP {{ mip.code }} and all its MRCs? This cannot be undone."
+        data-hr-reload="1"
+      >Delete MIP</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>MRCs under this MIP</h2>
+  <form method="post" action="{{ url_for('create_mrc', mip_id=mip.id) }}">
+    <div class="field-row">
+      <div class="field"><label>MRC code</label><input name="code" required placeholder="e.g. M-1"></div>
+      <div class="field"><label>Periodicity</label><input name="periodicity" placeholder="Monthly"></div>
+      <div class="field"><label>Description</label><input name="description"></div>
+    </div>
+    <button type="submit" class="primary">Add MRC</button>
+  </form>
+
+  {% if mip.mrcs %}
+    <table class="data" style="margin-top:1rem">
+      <thead><tr><th>Code</th><th>Periodicity</th><th>Description</th><th></th></tr></thead>
+      <tbody>
+        {% for c in mip.mrcs %}
+        <tr>
+          <td><strong>{{ c.code }}</strong></td>
+          <td>{{ c.periodicity or '—' }}</td>
+          <td>{{ c.description or '—' }}</td>
+          <td class="actions"><a href="{{ url_for('view_mrc', mrc_id=c.id) }}">Open →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty" style="margin-top:1rem">No MRCs yet for this MIP.</div>
+  {% endif %}
+</div>
+{% endblock %}

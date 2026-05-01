@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=hazreq
+Comment=Generate hazmat issue chits
+Exec=xdg-open http://localhost:8000
+Icon=/opt/hazreq/app/static/icon.png
+Terminal=false
+Categories=Office;Utility;
+StartupNotify=false

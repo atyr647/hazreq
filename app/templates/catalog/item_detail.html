@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ item.nomenclature }} — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>{{ item.nomenclature }}</h1>
+  <a href="{{ url_for('view_spmig', spmig_id=item.spmig_id) }}">← {{ item.spmig.code }}</a>
+</div>
+
+<div class="card">
+  <h2>Item details</h2>
+  <p class="muted">SPMIG: <strong>{{ item.spmig.code }}</strong></p>
+  <form method="post" action="{{ url_for('edit_item', item_id=item.id) }}">
+    <div class="field-row">
+      <div class="field"><label>Nomenclature</label><input name="nomenclature" value="{{ item.nomenclature }}" required></div>
+      <div class="field"><label>NIIN</label><input name="niin" value="{{ item.niin or '' }}"></div>
+      <div class="field"><label>Unit of issue</label><input name="unit_of_issue" value="{{ item.unit_of_issue or '' }}"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea name="notes">{{ item.notes or '' }}</textarea></div>
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      <span class="spacer"></span>
+      <button
+        type="button"
+        class="danger"
+        data-hr-action="POST:{{ url_for('delete_item', item_id=item.id) }}"
+        data-hr-confirm="Delete this item? Only allowed if not attached to any MRC."
+        data-hr-reload="1"
+      >Delete item</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Used in MRCs</h2>
+  {% if used_in %}
+    <ul>
+      {% for mrc in used_in %}
+        <li><a href="{{ url_for('view_mrc', mrc_id=mrc.id) }}">{{ mrc.mip.code }} / {{ mrc.code }}</a></li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">Not currently attached to any MRC.</p>
+  {% endif %}
+</div>
+{% endblock %}

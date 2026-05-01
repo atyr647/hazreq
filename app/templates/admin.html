@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Admin — hazreq{% endblock %}
+{% block content %}
+<h1>Admin</h1>
+
+<div class="card">
+  <h2>Health</h2>
+  <table class="data">
+    <tbody>
+      <tr><td>Database</td><td>{{ health.db_path }}</td><td><span class="badge {{ 'final' if health.db_writable else 'danger' }}">{{ 'OK' if health.db_writable else 'NOT WRITABLE' }}</span></td></tr>
+      <tr><td>DB size</td><td colspan="2">{{ health.db_size_mb }} MB</td></tr>
+      <tr><td>unoserver (PDF)</td><td colspan="1">127.0.0.1</td><td><span class="badge {{ 'final' if health.unoserver_alive else 'danger' }}">{{ 'RUNNING' if health.unoserver_alive else 'OFFLINE' }}</span></td></tr>
+      <tr><td>Template</td><td>{{ health.template_present and 'Present' or 'Missing' }}</td><td><span class="badge {{ 'final' if health.template_present else 'danger' }}">{{ 'OK' if health.template_present else 'PREP REQUIRED' }}</span></td></tr>
+      <tr><td>PDF directory</td><td colspan="2">{{ health.pdf_dir }} — {{ health.pdf_count }} file(s)</td></tr>
+      <tr><td>Backup directory</td><td colspan="2">{{ health.backup_dir }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Backup</h2>
+  <p class="muted">Downloads a single .zip with the SQLite database and all generated PDFs.</p>
+  <a href="{{ url_for('admin_backup') }}" class="btn primary">Download backup .zip</a>
+</div>
+
+<div class="card">
+  <h2>Restore</h2>
+  <p class="muted">Upload a previously-downloaded <code>hazreq.db</code> file (NOT the .zip) to replace the current database. The schema is validated before swapping.</p>
+  <form method="post" action="{{ url_for('admin_restore') }}" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".db" required>
+    <button type="submit" class="danger" onclick="return confirm('Replace the current database? This cannot be undone.')">Restore</button>
+  </form>
+  {% if request.query_params.get('restored') %}<p class="flash ok">Database restored.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Recent backups (cron)</h2>
+  {% if backups %}
+    <ul>{% for b in backups %}<li>{{ b.name }}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="muted">No automatic backups yet. Configure the nightly cron in <code>deploy/</code>.</p>
+  {% endif %}
+</div>
+{% endblock %}

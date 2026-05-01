@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local data (created at runtime)
+data/hazreq.db
+data/hazreq.db-wal
+data/hazreq.db-shm
+data/pdfs/
+data/backups/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store

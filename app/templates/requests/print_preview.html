@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Request #{{ r.id }} — Print preview</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <style>
+    body { background: #fff; }
+    .sheet { max-width: 8.5in; margin: 1rem auto; padding: 1rem; background: #fff; }
+    .sheet h1 { text-align: center; letter-spacing: .05em; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem 2rem; margin: 1rem 0; }
+    .meta-grid div { border-bottom: 1px solid #444; padding: .25rem 0; }
+    table.print { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    table.print th, table.print td { border: 1px solid #444; padding: .35rem .5rem; }
+    table.print th { background: #eee; }
+    .sig { margin-top: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .sig div { border-top: 1px solid #444; padding-top: .25rem; font-size: .85rem; color: #444; }
+    .toolbar { text-align: center; margin: .5rem 0; }
+    @media print { .toolbar { display: none; } body { background: #fff; } .sheet { margin: 0; padding: .25in; } }
+  </style>
+</head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">Print</button></div>
+  <div class="sheet">
+    <h1>HAZMAT ISSUE CHIT</h1>
+    <p style="text-align:center" class="muted">Request #{{ r.id }}</p>
+
+    <div class="meta-grid">
+      <div><strong>HAZMAT LOCATION:</strong> {{ r.hazmat_location or '' }}</div>
+      <div><strong>NAME:</strong> {{ r.requestor_name or '' }}</div>
+      <div><strong>DATE / TIME:</strong> {{ (r.datetime_of_request or r.created_at).strftime('%Y-%m-%d %H:%M') }}</div>
+      <div><strong>WORKCENTER:</strong> {{ r.workcenter or '' }}</div>
+      <div><strong>LPO:</strong> {{ r.lpo or '' }}</div>
+    </div>
+
+    <table class="print">
+      <thead>
+        <tr>
+          <th style="width:18%">SPMIG/SPIN</th>
+          <th>NOMENCLATURE</th>
+          <th style="width:14%">NIIN</th>
+          <th style="width:8%">QTY</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in r.lines %}
+        <tr>
+          <td>{{ line.spmig_code or '' }}</td>
+          <td>{{ line.nomenclature or '' }}</td>
+          <td>{{ line.niin or '' }}</td>
+          <td>{{ line.qty if line.qty is not none else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="sig">
+      <div>Maintenance Requestor — Signature</div>
+      <div>Hazmat Issuing Personnel — Signature</div>
+    </div>
+  </div>
+</body>
+</html>

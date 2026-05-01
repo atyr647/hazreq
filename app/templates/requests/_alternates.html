@@ -1,0 +1,18 @@
+{% if alternates %}
+  <div class="search-results">
+    {% for it in alternates %}
+      <form method="post" action="/requests/{{ line.request_id }}/lines/{{ line.id }}/swap"
+            data-hr-form data-hr-target="lines-tbody">
+        <input type="hidden" name="to_item_id" value="{{ it.id }}">
+        <button type="submit" class="result" style="width:100%; text-align:left; border:none; background:none; padding:.5rem .6rem; border-bottom:1px solid var(--border); cursor:pointer">
+          <div>
+            <strong>{{ it.nomenclature }}</strong>
+            {% if it.niin %}<div class="meta">NIIN {{ it.niin }}</div>{% endif %}
+          </div>
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty" style="padding:.5rem">No alternates in this SPMIG.</div>
+{% endif %}

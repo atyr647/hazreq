@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Request history — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>Request history</h1>
+  <a href="{{ url_for('new_request') }}" class="btn primary">+ New Request</a>
+</div>
+
+<div class="card">
+  <form method="get" action="{{ url_for('list_requests') }}">
+    <div class="field-row">
+      <div class="field"><label>Search</label><input name="q" value="{{ q }}" placeholder="Requestor, workcenter, LPO, location"></div>
+      <div class="field">
+        <label>Status</label>
+        <select name="status">
+          <option value="" {% if not status_filter %}selected{% endif %}>All</option>
+          <option value="draft" {% if status_filter == 'draft' %}selected{% endif %}>Draft</option>
+          <option value="final" {% if status_filter == 'final' %}selected{% endif %}>Finalized</option>
+        </select>
+      </div>
+      <div class="field"><label>From</label><input type="date" name="from" value="{{ date_from }}"></div>
+      <div class="field"><label>To</label><input type="date" name="to" value="{{ date_to }}"></div>
+    </div>
+    <button type="submit" class="primary">Filter</button>
+    <a href="{{ url_for('list_requests') }}" class="btn">Reset</a>
+  </form>
+</div>
+
+<div class="card">
+  {% if rows %}
+    <table class="data">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Date / Time</th>
+          <th>Requestor</th>
+          <th>Workcenter</th>
+          <th>LPO</th>
+          <th>Lines</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.id }}</td>
+          <td>{{ (r.datetime_of_request or r.created_at).strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ r.requestor_name or '—' }}</td>
+          <td>{{ r.workcenter or '—' }}</td>
+          <td>{{ r.lpo or '—' }}</td>
+          <td>{{ r.lines | length }}</td>
+          <td>
+            {% if r.is_finalized %}<span class="badge final">Final</span>{% else %}<span class="badge draft">Draft</span>{% endif %}
+          </td>
+          <td class="actions"><a href="{{ url_for('view_request', request_id=r.id) }}">Open →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No requests match these filters.</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ spmig.code }} — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>{{ spmig.code }}</h1>
+  <a href="{{ url_for('list_spmigs') }}">← All SPMIGs</a>
+</div>
+
+<div class="card">
+  <h2>SPMIG details</h2>
+  <form method="post" action="{{ url_for('edit_spmig', spmig_id=spmig.id) }}">
+    <div class="field-row">
+      <div class="field"><label>Code</label><input name="code" value="{{ spmig.code }}" required></div>
+      <div class="field"><label>Description</label><input name="description" value="{{ spmig.description or '' }}"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea name="notes">{{ spmig.notes or '' }}</textarea></div>
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      <span class="spacer"></span>
+      <button
+        type="button"
+        class="danger"
+        data-hr-action="POST:{{ url_for('delete_spmig', spmig_id=spmig.id) }}"
+        data-hr-confirm="Delete SPMIG {{ spmig.code }}? Only allowed if it has no items."
+        data-hr-reload="1"
+      >Delete SPMIG</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Hazmat items in this SPMIG</h2>
+  {% if spmig.items %}
+    <table class="data">
+      <thead><tr><th>Nomenclature</th><th>NIIN</th><th>Unit</th><th></th></tr></thead>
+      <tbody>
+        {% for it in spmig.items %}
+          <tr>
+            <td>{{ it.nomenclature }}</td>
+            <td>{{ it.niin or '—' }}</td>
+            <td>{{ it.unit_of_issue or '—' }}</td>
+            <td class="actions"><a href="{{ url_for('view_item', item_id=it.id) }}">Edit →</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No items in this SPMIG yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Add an item</h2>
+  <form method="post" action="{{ url_for('create_hazmat_item', spmig_id=spmig.id) }}">
+    <div class="field-row">
+      <div class="field"><label>Nomenclature</label><input name="nomenclature" required></div>
+      <div class="field"><label>NIIN</label><input name="niin"></div>
+      <div class="field"><label>Unit of issue</label><input name="unit_of_issue"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea name="notes"></textarea></div>
+    <button type="submit" class="primary">Add item</button>
+  </form>
+</div>
+{% endblock %}
