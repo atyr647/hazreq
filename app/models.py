@@ -8,7 +8,6 @@ from datetime import datetime
 
 from sqlalchemy import (
     DateTime,
-    Float,  # used by RequestLine.qty
     ForeignKey,
     Integer,
     String,
@@ -157,7 +156,7 @@ class RequestLine(Base):
     spmig_code: Mapped[str | None] = mapped_column(String(64))
     nomenclature: Mapped[str | None] = mapped_column(String(256))
     niin: Mapped[str | None] = mapped_column(String(32))
-    qty: Mapped[float | None] = mapped_column(Float)
+    qty: Mapped[int | None] = mapped_column(Integer)
 
     request: Mapped[Request] = relationship(back_populates="lines")
 

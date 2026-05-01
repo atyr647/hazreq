@@ -228,7 +228,7 @@ def add_line(
     spmig_code: str = Form(""),
     nomenclature: str = Form(""),
     niin: str = Form(""),
-    qty: float = Form(1.0),
+    qty: int = Form(1),
     db: Session = Depends(get_session),
 ):
     r = _get_request_or_404(db, request_id)
@@ -326,7 +326,7 @@ async def patch_line(
         if key not in allowed:
             continue
         if key == "qty":
-            line.qty = float(val) if val else None
+            line.qty = int(val) if val else None
         else:
             setattr(line, key, (val or "").strip() or None)
     db.commit()

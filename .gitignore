@@ -6,6 +6,9 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
+# AppImage build scratch (built artifacts in dist/ are committed)
+build-appimage/
+
 # Local data (created at runtime)
 data/hazreq.db
 data/hazreq.db-wal
