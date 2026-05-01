@@ -27,7 +27,7 @@ esac
 echo "==> Building for ${ARCH}"
 
 PY_VERSION="${PY_VERSION:-3.11}"
-PY_FULL="${PY_FULL:-3.11.10}"
+PY_FULL="${PY_FULL:-3.11.14}"
 BUILD="$REPO_ROOT/build-appimage"
 DIST="$REPO_ROOT/dist"
 mkdir -p "$BUILD" "$DIST"
@@ -82,6 +82,10 @@ rsync -a --delete \
   "$APP_DEST/"
 
 # ----- 5. Write the launcher (AppRun) ------------------------------
+# python-appimage ships AppDir/AppRun as a symlink into usr/bin; remove
+# it so our heredoc writes a real file at the AppDir root instead of
+# overwriting the bundled python launcher.
+rm -f "$APPDIR/AppRun"
 cat > "$APPDIR/AppRun" <<'APPRUN'
 #!/usr/bin/env bash
 # hazreq AppImage launcher.
