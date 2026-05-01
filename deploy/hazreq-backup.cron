@@ -1,0 +1,5 @@
+# Nightly hazreq SQLite backup, prune to last 14.
+# Install with: sudo cp deploy/hazreq-backup.cron /etc/cron.d/hazreq-backup
+# (and ensure no trailing whitespace; cron is picky)
+
+0 2 * * *  hazreq  sqlite3 /var/lib/hazreq/hazreq.db ".backup /var/lib/hazreq/backups/hazreq-$(date +\%F).db" && find /var/lib/hazreq/backups -name 'hazreq-*.db' -type f -printf '%T@ %p\n' | sort -nr | tail -n +15 | cut -d' ' -f2- | xargs -r rm

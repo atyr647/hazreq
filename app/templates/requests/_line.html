@@ -1,0 +1,28 @@
+<tr data-hr-row data-line-id="{{ line.id }}" data-hr-form>
+  <td data-label="SPMIG">
+    <input name="spmig_code" value="{{ line.spmig_code or '' }}"
+      data-hr-save="PATCH:/requests/{{ line.request_id }}/lines/{{ line.id }}">
+  </td>
+  <td data-label="Nomenclature">
+    <input name="nomenclature" value="{{ line.nomenclature or '' }}"
+      data-hr-save="PATCH:/requests/{{ line.request_id }}/lines/{{ line.id }}">
+  </td>
+  <td data-label="NIIN">
+    <input name="niin" value="{{ line.niin or '' }}"
+      data-hr-save="PATCH:/requests/{{ line.request_id }}/lines/{{ line.id }}">
+  </td>
+  <td data-label="Qty" style="width:6rem">
+    <input name="qty" type="number" step="any" min="0" required
+      value="{{ line.qty if line.qty is not none else '' }}"
+      title="Quantity for this request (manually fillable)"
+      style="font-weight:600;{% if line.qty is none or line.qty <= 0 %} background:#fff7e0;{% endif %}"
+      data-hr-save="PATCH:/requests/{{ line.request_id }}/lines/{{ line.id }}">
+  </td>
+  <td class="actions" data-label="Actions">
+    {% if line.hazmat_item_id %}
+      <button type="button" class="icon small" title="Swap alternate" data-alt-toggle="{{ line.id }}">🔄</button>
+    {% endif %}
+    <button type="button" class="icon small danger" title="Delete" data-delete-line="{{ line.id }}">✕</button>
+    <div id="alt-{{ line.id }}" class="hidden" style="margin-top:.25rem"></div>
+  </td>
+</tr>

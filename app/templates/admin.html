@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Admin — hazreq{% endblock %}
+{% block content %}
+<h1>Admin</h1>
+
+<div class="card">
+  <h2>Health</h2>
+  <table class="data">
+    <tbody>
+      <tr><td>Database</td><td>{{ health.db_path }}</td><td><span class="badge {{ 'final' if health.db_writable else 'danger' }}">{{ 'OK' if health.db_writable else 'NOT WRITABLE' }}</span></td></tr>
+      <tr><td>DB size</td><td colspan="2">{{ health.db_size_mb }} MB</td></tr>
+      <tr><td>PDF backend</td><td colspan="2"><strong>{{ health.pdf_backend }}</strong></td></tr>
+      {% if health.pdf_backend == 'docx' %}
+        <tr><td>unoserver</td><td colspan="1">127.0.0.1</td><td><span class="badge {{ 'final' if health.unoserver_alive else 'danger' }}">{{ 'RUNNING' if health.unoserver_alive else 'OFFLINE (will fall back to soffice)' }}</span></td></tr>
+        <tr><td>docx template</td><td>{{ health.template_present and 'Present' or 'Missing' }}</td><td><span class="badge {{ 'final' if health.template_present else 'danger' }}">{{ 'OK' if health.template_present else 'PREP REQUIRED' }}</span></td></tr>
+      {% else %}
+        <tr><td>Fillable PDF</td><td>{{ health.fillable_pdf_present and 'Present' or 'Missing' }}</td><td><span class="badge {{ 'final' if health.fillable_pdf_present else 'danger' }}">{{ 'OK' if health.fillable_pdf_present else 'NOT INSTALLED' }}</span></td></tr>
+      {% endif %}
+      <tr>
+        <td>Printing (CUPS)</td>
+        <td>
+          {% if health.printers %}
+            {{ health.printers | length }} printer(s){% if health.default_printer %} — default: <strong>{{ health.default_printer }}</strong>{% endif %}
+          {% elif health.printing_available %}
+            no printers configured
+          {% else %}
+            `lp` not installed
+          {% endif %}
+        </td>
+        <td><span class="badge {{ 'final' if health.printing_available else 'danger' }}">{{ 'OK' if health.printing_available else 'OFFLINE' }}</span></td>
+      </tr>
+      <tr><td>PDF directory</td><td colspan="2">{{ health.pdf_dir }} — {{ health.pdf_count }} file(s)</td></tr>
+      <tr><td>Backup directory</td><td colspan="2">{{ health.backup_dir }}</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Catalog CSV export / import</h2>
+  <p class="muted">Round-trips MIPs, MRCs, SPMIGs, hazmat items, and MRC↔item links as a single .zip. Records are matched on natural keys, so re-importing the same export updates rather than duplicates. Requests are not exported here — use the SQLite backup below for full state.</p>
+  <div class="row">
+    <a href="{{ url_for('admin_catalog_export') }}" class="btn primary">Export catalog (.zip)</a>
+  </div>
+  <h3>Import</h3>
+  <form method="post" action="{{ url_for('admin_catalog_import') }}" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".zip" required>
+    <button type="submit" onclick="return confirm('Apply this catalog .zip? Existing records with matching codes will be updated.')">Import</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Full database backup</h2>
+  <p class="muted">Single .zip with the SQLite database (via `.backup`) and all generated PDFs.</p>
+  <a href="{{ url_for('admin_backup') }}" class="btn primary">Download backup .zip</a>
+</div>
+
+<div class="card">
+  <h2>Restore database</h2>
+  <p class="muted">Upload a previously-downloaded <code>hazreq.db</code> file (NOT the .zip) to replace the current database. The schema is validated before swapping.</p>
+  <form method="post" action="{{ url_for('admin_restore') }}" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".db" required>
+    <button type="submit" class="danger" onclick="return confirm('Replace the current database? This cannot be undone.')">Restore</button>
+  </form>
+  {% if request.query_params.get('restored') %}<p class="flash ok">Database restored.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>Audit log</h2>
+  <p class="muted">Append-only record of catalog changes (MIPs, MRCs, SPMIGs, items, links). Browse and filter by entity, action, or text.</p>
+  <a href="{{ url_for('admin_log') }}" class="btn">Open audit log →</a>
+</div>
+
+<div class="card">
+  <h2>Recent backups (cron)</h2>
+  {% if backups %}
+    <ul>{% for b in backups %}<li>{{ b.name }}</li>{% endfor %}</ul>
+  {% else %}
+    <p class="muted">No automatic backups yet. Configure the nightly cron in <code>deploy/</code>.</p>
+  {% endif %}
+</div>
+{% endblock %}

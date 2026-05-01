@@ -1,0 +1,15 @@
+{% if rows %}
+  <div class="search-results">
+    {% for mrc in rows %}
+      <div class="result">
+        <div>
+          <strong>{{ mrc.mip.code }} / {{ mrc.code }}</strong>
+          {% if mrc.description %}<div class="meta">{{ mrc.description }}</div>{% endif %}
+        </div>
+        <button type="button" class="primary small" data-load-mrc="{{ mrc.id }}">Add to request</button>
+      </div>
+    {% endfor %}
+  </div>
+{% elif q %}
+  <div class="search-results"><div class="empty">No matches for "{{ q }}".</div></div>
+{% endif %}

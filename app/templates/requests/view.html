@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Request #{{ r.id }} (final) — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <div>
+    <h1>Request #{{ r.id }}</h1>
+    <p class="muted">
+      <span class="badge final">Finalized</span>
+      {{ r.finalized_at.strftime('%Y-%m-%d %H:%M') }} UTC
+    </p>
+  </div>
+  <a href="{{ url_for('list_requests') }}">All requests →</a>
+</div>
+
+<div class="card">
+  <h2>Header</h2>
+  <div class="field-row">
+    <div><label class="muted">Date / Time</label><div>{{ r.datetime_of_request.strftime('%Y-%m-%d %H:%M') if r.datetime_of_request else '—' }}</div></div>
+    <div><label class="muted">Hazmat location</label><div>{{ r.hazmat_location or '—' }}</div></div>
+    <div><label class="muted">Name</label><div>{{ r.requestor_name or '—' }}</div></div>
+    <div><label class="muted">Workcenter</label><div>{{ r.workcenter or '—' }}</div></div>
+    <div><label class="muted">LPO</label><div>{{ r.lpo or '—' }}</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Line items ({{ r.lines | length }})</h2>
+  <table class="data">
+    <thead><tr><th>SPMIG</th><th>Nomenclature</th><th>NIIN</th><th>Qty</th></tr></thead>
+    <tbody>
+      {% for line in r.lines %}
+      <tr>
+        <td>{{ line.spmig_code or '' }}</td>
+        <td>{{ line.nomenclature or '' }}</td>
+        <td>{{ line.niin or '' }}</td>
+        <td>{{ line.qty if line.qty is not none else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  {% if request.query_params.get('printed') %}<p class="flash ok">Sent to printer.</p>{% endif %}
+  <div class="row">
+    {% if r.pdf_path %}
+      <a href="{{ url_for('request_pdf', request_id=r.id) }}" class="btn primary" target="_blank">Download PDF</a>
+      <form method="post" action="{{ url_for('request_print', request_id=r.id) }}" style="display:inline">
+        <button type="submit" class="btn primary" title="Send to default CUPS printer">Print to printer</button>
+      </form>
+    {% endif %}
+    <a href="{{ url_for('print_preview', request_id=r.id) }}" class="btn" target="_blank">Print preview</a>
+    <form method="post" action="{{ url_for('duplicate_request', request_id=r.id) }}" style="display:inline">
+      <button type="submit">Duplicate as new</button>
+    </form>
+    <form method="post" action="{{ url_for('finalize_request', request_id=r.id) }}" style="display:inline">
+      <button type="submit" title="Re-render PDF from existing snapshot">Re-render PDF</button>
+    </form>
+    <form method="post" action="{{ url_for('reopen_request', request_id=r.id) }}" style="display:inline"
+          onsubmit="return confirm('Re-open this finalized request for editing? The current PDF will be replaced when you re-finalize.');">
+      <button type="submit" title="Unlock for further edits">Re-open for edit</button>
+    </form>
+    <span class="spacer"></span>
+    <button
+      type="button"
+      class="danger"
+      data-hr-action="POST:{{ url_for('delete_request', request_id=r.id) }}"
+      data-hr-confirm="Delete this finalized request? This cannot be undone."
+      data-hr-reload="1"
+    >Delete</button>
+  </div>
+</div>
+{% endblock %}

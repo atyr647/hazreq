@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ mrc.mip.code }} / {{ mrc.code }} — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>{{ mrc.mip.code }} / {{ mrc.code }}</h1>
+  <a href="{{ url_for('view_mip', mip_id=mrc.mip.id) }}">← {{ mrc.mip.code }}</a>
+</div>
+
+<div class="card">
+  <h2>MRC details</h2>
+  <form method="post" action="{{ url_for('edit_mrc', mrc_id=mrc.id) }}">
+    <div class="field-row">
+      <div class="field"><label>Code</label><input name="code" value="{{ mrc.code }}" required></div>
+      <div class="field"><label>Periodicity</label><input name="periodicity" value="{{ mrc.periodicity or '' }}"></div>
+    </div>
+    <div class="field"><label>Description</label><textarea name="description">{{ mrc.description or '' }}</textarea></div>
+    <div class="row">
+      <button type="submit" class="primary">Save</button>
+      <span class="spacer"></span>
+      <button
+        type="button"
+        class="danger"
+        data-hr-action="POST:{{ url_for('delete_mrc', mrc_id=mrc.id) }}"
+        data-hr-confirm="Delete MRC {{ mrc.mip.code }} / {{ mrc.code }}?"
+        data-hr-reload="1"
+      >Delete MRC</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Hazmat items in this MRC</h2>
+  <p class="muted">Quantity is set per request (default 1, operator-overridable). It's intentionally not stored on the link.</p>
+  {% if mrc.items %}
+    <table class="data">
+      <thead>
+        <tr>
+          <th>SPMIG</th>
+          <th>Nomenclature</th>
+          <th>NIIN</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for link in mrc.items %}
+          {% set hi = link.hazmat_item %}
+          <tr>
+            <td>{{ hi.spmig.code if hi and hi.spmig else '—' }}</td>
+            <td>{{ hi.nomenclature if hi else '(missing)' }}</td>
+            <td>{{ hi.niin if hi else '' }}</td>
+            <td class="actions">
+              <form method="post" action="{{ url_for('move_mrc_item', mrc_id=mrc.id, hazmat_item_id=link.hazmat_item_id) }}" style="display:inline">
+                <input type="hidden" name="direction" value="up">
+                <button type="submit" class="icon small" title="Move up">↑</button>
+              </form>
+              <form method="post" action="{{ url_for('move_mrc_item', mrc_id=mrc.id, hazmat_item_id=link.hazmat_item_id) }}" style="display:inline">
+                <input type="hidden" name="direction" value="down">
+                <button type="submit" class="icon small" title="Move down">↓</button>
+              </form>
+              <form method="post" action="{{ url_for('remove_mrc_item', mrc_id=mrc.id, hazmat_item_id=link.hazmat_item_id) }}" style="display:inline">
+                <button type="submit" class="icon small danger" title="Remove">✕</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No items linked to this MRC yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Add a hazmat item to this MRC</h2>
+  <form method="post" action="{{ url_for('add_mrc_item', mrc_id=mrc.id) }}">
+    <div class="field">
+      <label>Hazmat item</label>
+      <select name="hazmat_item_id" required>
+        <option value="">— pick an item —</option>
+        {% for sp in spmigs %}
+          {% if sp.items %}
+            <optgroup label="{{ sp.code }} — {{ sp.description or '' }}">
+              {% for it in sp.items %}
+                <option value="{{ it.id }}">{{ it.nomenclature }}{% if it.niin %} (NIIN {{ it.niin }}){% endif %}</option>
+              {% endfor %}
+            </optgroup>
+          {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="primary">Attach item</button>
+  </form>
+  <p class="muted">Items are grouped by SPMIG. Don't see what you need? <a href="{{ url_for('list_spmigs') }}">Add a SPMIG/item first</a>.</p>
+</div>
+{% endblock %}

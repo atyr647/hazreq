@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}MIPs — hazreq{% endblock %}
+{% block content %}
+<div class="row between">
+  <h1>MIPs</h1>
+</div>
+
+<div class="card">
+  <h2>Add a MIP</h2>
+  <form method="post" action="{{ url_for('create_mip') }}">
+    <div class="field-row">
+      <div class="field"><label>Code</label><input name="code" required placeholder="e.g. MIP-1234"></div>
+      <div class="field"><label>Title</label><input name="title" placeholder="Equipment / system"></div>
+    </div>
+    <div class="field"><label>Notes</label><textarea name="notes"></textarea></div>
+    <button type="submit" class="primary">Add MIP</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>All MIPs</h2>
+  {% if mips %}
+    <table class="data">
+      <thead>
+        <tr><th>Code</th><th>Title</th><th>MRCs</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for m in mips %}
+        <tr>
+          <td><strong>{{ m.code }}</strong></td>
+          <td>{{ m.title or '—' }}</td>
+          <td>{{ m.mrcs | length }}</td>
+          <td class="actions"><a href="{{ url_for('view_mip', mip_id=m.id) }}">Open →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">No MIPs yet. Add one above.</div>
+  {% endif %}
+</div>
+{% endblock %}
