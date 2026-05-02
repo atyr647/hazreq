@@ -6,6 +6,9 @@
   <title>{% block title %}hazreq{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
   <script src="{{ url_for('static', path='app.js') }}" defer></script>
+  {% if browser_storage %}
+    <script type="module" src="{{ url_for('static', path='storage/main.js') }}"></script>
+  {% endif %}
 </head>
 <body>
   <header class="topbar">

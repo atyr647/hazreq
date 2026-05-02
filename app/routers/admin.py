@@ -17,6 +17,7 @@ from app.config import settings
 from app.db import engine, get_session
 from app.models import AuditLog
 from app.services import csvio
+from app.services import jsonio
 from app.services.pdf import _unoserver_alive
 from app.services.printer import default_printer, is_available as printing_available, list_printers
 from app.templating import render
@@ -136,6 +137,45 @@ async def admin_restore(file: UploadFile = File(...)):
     finally:
         tmp_path.unlink(missing_ok=True)
 
+    return RedirectResponse("/admin/?restored=1", status_code=303)
+
+
+# ============================================================
+# JSON whole-DB export / import (browser-storage friendly)
+# ============================================================
+
+@router.get("/export.json", name="admin_export_json")
+def admin_export_json(db: Session = Depends(get_session)):
+    payload = jsonio.export_to_dict(db)
+    name = f"hazreq-backup-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
+    import json as _json
+    body = _json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.post("/import.json", name="admin_import_json")
+async def admin_import_json(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_session),
+):
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty upload")
+    import json as _json
+    try:
+        payload = _json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, _json.JSONDecodeError) as e:
+        raise HTTPException(400, f"Not valid JSON: {e}") from None
+    try:
+        counts = jsonio.import_from_dict(db, payload)
+    except jsonio.InvalidBackup as e:
+        raise HTTPException(400, str(e)) from None
+    log.info("JSON restore: %s", counts)
     return RedirectResponse("/admin/?restored=1", status_code=303)
 
 
