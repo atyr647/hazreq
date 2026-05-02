@@ -20,11 +20,34 @@ function fnv1a(str) {
   return (h >>> 0).toString(16);
 }
 
+// Tables whose rows carry an `updated_at` column. SQLAlchemy's
+// onupdate=utcnow can bump this column on flushes that didn't change
+// any user-visible field (same-value patches, formatter quirks). The
+// column is meaningful in storage but noise to the dirty-banner, so
+// strip it from the hash. created_at is left in — it only changes
+// when a row is genuinely (re-)created.
+const TIMESTAMPED_TABLES = ['mips', 'spmigs', 'hazmat_items', 'mrcs', 'requests'];
+
+function normaliseForHash(snapshot) {
+  if (!snapshot) return null;
+  const out = {};
+  for (const k of Object.keys(snapshot)) {
+    if (k === 'exportedAt') continue;  // changes every export call
+    if (TIMESTAMPED_TABLES.includes(k) && Array.isArray(snapshot[k])) {
+      out[k] = snapshot[k].map((row) => {
+        const { updated_at, ...rest } = row;
+        return rest;
+      });
+    } else {
+      out[k] = snapshot[k];
+    }
+  }
+  return out;
+}
+
 function snapshotHash(snapshot) {
   if (!snapshot) return '0';
-  const copy = { ...snapshot };
-  delete copy.exportedAt;  // changes every call; not meaningful
-  return fnv1a(JSON.stringify(copy));
+  return fnv1a(JSON.stringify(normaliseForHash(snapshot)));
 }
 
 function isDirty(snapshot) {
