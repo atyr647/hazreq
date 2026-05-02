@@ -8,9 +8,10 @@ from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.config import REPO_ROOT
+from app.config import REPO_ROOT, settings
 
 templates = Jinja2Templates(directory=str(REPO_ROOT / "app" / "templates"))
+templates.env.globals["browser_storage"] = settings.browser_storage
 
 
 def render(

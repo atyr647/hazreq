@@ -7,7 +7,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.config import REPO_ROOT
+from app.config import REPO_ROOT, settings
 from app.routers import admin, catalog, dashboard, requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -15,6 +15,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 app = FastAPI(title="hazreq", docs_url=None, redoc_url=None, openapi_url=None)
 
 app.mount("/static", StaticFiles(directory=str(REPO_ROOT / "app" / "static")), name="static")
+
+if settings.browser_storage:
+    from app.middleware import BrowserStorageMiddleware
+    app.add_middleware(BrowserStorageMiddleware)
 
 app.include_router(dashboard.router)
 app.include_router(catalog.router, prefix="/catalog", tags=["catalog"])

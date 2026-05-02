@@ -16,28 +16,37 @@ from typing import Any
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
 
-from app.models import MIP, MRC, SPMIG, AuditLog, HazmatItem, MRCItem
-
 log = logging.getLogger(__name__)
 
 
-# Map model class → (entity_type, key_extractor)
-_ENTITIES = {
-    MIP: ("mip", lambda o: o.code),
-    MRC: ("mrc", lambda o: f"{o.mip.code if o.mip else o.mip_id}/{o.code}"),
-    SPMIG: ("spmig", lambda o: o.code),
-    HazmatItem: ("hazmat_item", lambda o: f"{o.spmig.code if o.spmig else o.spmig_id}: {o.nomenclature}"),
-    MRCItem: ("mrc_item", lambda o: f"{o.mrc_id}↔{o.hazmat_item_id}"),
-}
+# Model-keyed tables get populated on first flush via _ensure_tables().
+# Importing app.models at module load triggers a circular import any
+# time db.py is the first leg of the import chain (db imports this
+# module to wire the listener, this module would then re-enter models
+# which is mid-import).
+_ENTITIES: dict = {}
+_FIELDS: dict = {}
 
-# Per-entity column allowlist for serialization (skip noisy timestamps).
-_FIELDS = {
-    MIP: ("code", "title", "notes"),
-    MRC: ("mip_id", "code", "periodicity", "description"),
-    SPMIG: ("code", "description", "notes"),
-    HazmatItem: ("spmig_id", "nomenclature", "niin", "unit_of_issue", "notes"),
-    MRCItem: ("mrc_id", "hazmat_item_id", "sort_order"),
-}
+
+def _ensure_tables() -> None:
+    if _ENTITIES:
+        return
+    from app.models import MIP, MRC, SPMIG, HazmatItem, MRCItem  # noqa: PLC0415
+
+    _ENTITIES.update({
+        MIP: ("mip", lambda o: o.code),
+        MRC: ("mrc", lambda o: f"{o.mip.code if o.mip else o.mip_id}/{o.code}"),
+        SPMIG: ("spmig", lambda o: o.code),
+        HazmatItem: ("hazmat_item", lambda o: f"{o.spmig.code if o.spmig else o.spmig_id}: {o.nomenclature}"),
+        MRCItem: ("mrc_item", lambda o: f"{o.mrc_id}↔{o.hazmat_item_id}"),
+    })
+    _FIELDS.update({
+        MIP: ("code", "title", "notes"),
+        MRC: ("mip_id", "code", "periodicity", "description"),
+        SPMIG: ("code", "description", "notes"),
+        HazmatItem: ("spmig_id", "nomenclature", "niin", "unit_of_issue", "notes"),
+        MRCItem: ("mrc_id", "hazmat_item_id", "sort_order"),
+    })
 
 
 def _snapshot(obj: Any, fields: tuple[str, ...]) -> dict[str, Any]:
@@ -73,7 +82,9 @@ def _summary(action: str, entity_type: str, key: str, changed: dict | None = Non
     return f"{action.capitalize()} {entity_type} {key}"
 
 
-def _log_row(action: str, model_cls, obj, *, changed: dict | None = None) -> AuditLog:
+def _log_row(action: str, model_cls, obj, *, changed: dict | None = None):
+    from app.models import AuditLog  # noqa: PLC0415
+
     entity_type, key_fn = _ENTITIES[model_cls]
     fields = _FIELDS[model_cls]
     if action == "update":
@@ -93,7 +104,12 @@ def _log_row(action: str, model_cls, obj, *, changed: dict | None = None) -> Aud
 
 
 def _on_before_flush(session: Session, flush_context, instances) -> None:  # noqa: ARG001
-    new_rows: list[AuditLog] = []
+    if session.info.get("skip_audit"):
+        return
+    _ensure_tables()
+    from app.models import AuditLog  # noqa: PLC0415
+
+    new_rows: list = []
     for obj in list(session.new):
         cls = type(obj)
         if cls is AuditLog or cls not in _ENTITIES:

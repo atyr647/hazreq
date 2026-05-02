@@ -6,6 +6,7 @@ at sqlite:///:memory: and the rest at /tmp without touching code.
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,6 +31,8 @@ class Settings:
     pdf_backend: str
     fillable_pdf_path: Path | None
     printer: str | None
+    browser_storage: bool
+    sessions_dir: Path
 
     @classmethod
     def load(cls) -> Settings:
@@ -37,6 +40,7 @@ class Settings:
         db_default = f"sqlite:///{data_dir / 'hazreq.db'}"
         fillable_default = data_dir / "templates" / "hazmat_chit_fillable.pdf"
         fillable = _path("HAZREQ_FILLABLE_PDF_PATH", fillable_default)
+        sessions_default = Path(tempfile.gettempdir()) / "hazreq-sessions"
         return cls(
             db_url=os.environ.get("HAZREQ_DB_URL", db_default),
             template_path=_path("HAZREQ_TEMPLATE_PATH", data_dir / "templates" / "hazmat_chit.docx"),
@@ -48,6 +52,8 @@ class Settings:
             pdf_backend=os.environ.get("HAZREQ_PDF_BACKEND", "docx").lower(),
             fillable_pdf_path=fillable,
             printer=(os.environ.get("HAZREQ_PRINTER") or None),
+            browser_storage=os.environ.get("HAZREQ_BROWSER_STORAGE", "0") == "1",
+            sessions_dir=_path("HAZREQ_SESSIONS_DIR", sessions_default),
         )
 
 

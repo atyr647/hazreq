@@ -64,6 +64,19 @@
   {% if request.query_params.get('restored') %}<p class="flash ok">Database restored.</p>{% endif %}
 </div>
 
+{% if browser_storage %}
+<div class="card">
+  <h2>JSON backup</h2>
+  <p class="muted">Whole-database round-trip as a single <code>.json</code> file. Includes everything: catalog, requests, audit log. Use this when running the app as a website — your data lives in your browser session, so export before closing the tab.</p>
+  <a href="{{ url_for('admin_export_json') }}" class="btn primary">Download backup .json</a>
+  <h3 style="margin-top:1rem">Import</h3>
+  <form method="post" action="{{ url_for('admin_import_json') }}" enctype="multipart/form-data">
+    <input type="file" name="file" accept="application/json,.json" required>
+    <button type="submit" class="btn danger">Replace current data with this file</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="card">
   <h2>Audit log</h2>
   <p class="muted">Append-only record of catalog changes (MIPs, MRCs, SPMIGs, items, links). Browse and filter by entity, action, or text.</p>

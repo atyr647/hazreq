@@ -16,7 +16,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.db_url)
+# Honor a URL passed in by the caller (e.g. db._migrate for per-cookie
+# session DBs); otherwise fall back to the runtime app config.
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", settings.db_url)
 
 target_metadata = Base.metadata
 
