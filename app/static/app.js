@@ -44,6 +44,10 @@
       const text = await resp.text().catch(function () { return ''; });
       throw new Error('HTTP ' + resp.status + ': ' + text.slice(0, 200));
     }
+    // Notify any storage mirror that server state may have changed.
+    if (method !== 'GET' && method !== 'HEAD') {
+      window.dispatchEvent(new CustomEvent('hazreq:mutation', { detail: { url: url, method: method } }));
+    }
     const ct = resp.headers.get('content-type') || '';
     if (ct.indexOf('text/html') !== -1) return await resp.text();
     return resp;
