@@ -112,6 +112,7 @@ rsync -a --delete \
   "$REPO_ROOT/app" "$REPO_ROOT/scripts" "$REPO_ROOT/data" \
   "$REPO_ROOT/alembic.ini" "$REPO_ROOT/pyproject.toml" \
   "$REPO_ROOT/README.md" "$REPO_ROOT/ROADMAP.md" \
+  "$REPO_ROOT/BLANK NEW HAZMAT ISSUE CHIT 2.0.docx" \
   "$APP_DEST/"
 
 # ----- 5. Write the launcher (AppRun) ------------------------------
