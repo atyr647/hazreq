@@ -1,5 +1,34 @@
 /* hazreq — minimal hand-rolled CSS, mobile-first, no build step. */
 
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('/static/fonts/Inter-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url('/static/fonts/Inter-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('/static/fonts/Inter-Bold.woff2') format('woff2');
+}
+
 :root {
   --bg: #f7f7f5;
   --surface: #ffffff;
@@ -24,11 +53,21 @@
 html, body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 16px;
   color: var(--text);
   background: var(--bg);
   line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv11', 'ss03';
+}
+
+/* Inputs / buttons should inherit Inter, not the renderer's UA default */
+input, button, select, textarea {
+  font: inherit;
+  color: inherit;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -102,6 +141,8 @@ input[type="search"], input[type="file"], textarea, select {
   background: var(--surface);
   color: var(--text);
   width: 100%;
+  -webkit-appearance: none;
+  appearance: none;
 }
 input:focus, textarea:focus, select:focus {
   outline: 2px solid var(--accent);
