@@ -149,8 +149,28 @@ export HAZREQ_TEMPLATE_PATH="${HAZREQ_TEMPLATE_PATH:-$DATA_DIR/templates/hazmat_
 export HAZREQ_PDF_DIR="${HAZREQ_PDF_DIR:-$DATA_DIR/pdfs}"
 export HAZREQ_BACKUP_DIR="${HAZREQ_BACKUP_DIR:-$DATA_DIR/backups}"
 
-PORT="${HAZREQ_PORT:-8000}"
 HOST="${HAZREQ_HOST:-127.0.0.1}"
+
+# Port: honour HAZREQ_PORT verbatim if set (fail loudly if taken). Otherwise
+# scan 8000..8009 for the first free port, then fall back to whatever the
+# kernel hands out — so two AppImages on the same box don't trip over each other.
+if [ -n "${HAZREQ_PORT:-}" ]; then
+  PORT="$HAZREQ_PORT"
+else
+  PORT="$("$PY" -c "
+import socket, sys
+for p in range(8000, 8010):
+    s = socket.socket()
+    try:
+        s.bind(('$HOST', p))
+        s.close()
+        print(p); sys.exit(0)
+    except OSError:
+        s.close()
+s = socket.socket(); s.bind(('$HOST', 0))
+print(s.getsockname()[1]); s.close()
+")"
+fi
 
 cd "$HERE/opt/hazreq"
 export PYTHONPATH="$HERE/opt/hazreq:${PYTHONPATH:-}"
@@ -167,10 +187,24 @@ echo "==> hazreq is running at ${URL}"
 echo "    Data: ${DATA_DIR}"
 echo "    Stop with Ctrl-C"
 
-# Optional auto-launch browser when running interactively (skip with HAZREQ_NO_BROWSER=1).
-if [ -z "${HAZREQ_NO_BROWSER:-}" ] && command -v xdg-open >/dev/null && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-  ( sleep 1.5; xdg-open "$URL" ) &
-fi
+# Browser auto-launch. Skip with HAZREQ_NO_BROWSER=1. Set HAZREQ_APP_MODE=1
+# to open a chromeless Chromium window (--app=URL) instead of a regular tab.
+launch_browser() {
+  local url="$1"
+  [ -n "${HAZREQ_NO_BROWSER:-}" ] && return 0
+  [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && return 0
+  if [ -n "${HAZREQ_APP_MODE:-}" ]; then
+    for bin in chromium chromium-browser google-chrome chrome brave-browser microsoft-edge; do
+      if command -v "$bin" >/dev/null; then
+        ( sleep 1.5; "$bin" --app="$url" --window-size=1200,800 >/dev/null 2>&1 ) &
+        return 0
+      fi
+    done
+    echo "HAZREQ_APP_MODE=1 set but no Chromium-family browser found; falling back to default browser" >&2
+  fi
+  command -v xdg-open >/dev/null && ( sleep 1.5; xdg-open "$url" ) &
+}
+launch_browser "$URL"
 
 exec "$PY" -m uvicorn app.main:app --host "$HOST" --port "$PORT" --workers 1
 APPRUN
