@@ -47,7 +47,7 @@ On first launch the AppImage:
 - generates the starter docx template if missing
 - starts uvicorn on `127.0.0.1:8000` and opens the default browser (skip with `HAZREQ_NO_BROWSER=1`)
 
-Override anything via env vars (`HAZREQ_PORT`, `HAZREQ_HOST`, `HAZREQ_DATA_DIR`, etc.). If `HAZREQ_PORT` is unset, the launcher probes 8000–8009 for the first free port and falls back to a kernel-assigned one — so running two instances on the same box doesn't error out. Set `HAZREQ_APP_MODE=1` to open a chromeless Chromium window (`chromium --app=URL`) instead of a regular browser tab. Build for the Pi 400 by running the script *on* the Pi (cross-compiling AppImages is doable but messier — qemu-static + binfmt).
+Override anything via env vars (`HAZREQ_PORT`, `HAZREQ_HOST`, `HAZREQ_DATA_DIR`, etc.). If `HAZREQ_PORT` is unset, the launcher probes 8000–8009 for the first free port and falls back to a kernel-assigned one — so running two instances on the same box doesn't error out. By default the UI opens in a chromeless Chromium app window (`chromium --app=URL`); set `HAZREQ_APP_MODE=0` to open in a regular browser tab instead, or `HAZREQ_NO_BROWSER=1` to skip the auto-launch entirely. Build for the Pi 400 by running the script *on* the Pi (cross-compiling AppImages is doable but messier — qemu-static + binfmt).
 
 ### B. systemd install (always-on background service)
 

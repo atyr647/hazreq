@@ -187,20 +187,21 @@ echo "==> hazreq is running at ${URL}"
 echo "    Data: ${DATA_DIR}"
 echo "    Stop with Ctrl-C"
 
-# Browser auto-launch. Skip with HAZREQ_NO_BROWSER=1. Set HAZREQ_APP_MODE=1
-# to open a chromeless Chromium window (--app=URL) instead of a regular tab.
+# Browser auto-launch. Defaults to a chromeless Chromium app window
+# (chromium --app=URL); set HAZREQ_APP_MODE=0 to open in a regular browser
+# tab instead, or HAZREQ_NO_BROWSER=1 to skip the launch entirely.
 launch_browser() {
   local url="$1"
   [ -n "${HAZREQ_NO_BROWSER:-}" ] && return 0
   [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && return 0
-  if [ -n "${HAZREQ_APP_MODE:-}" ]; then
+  if [ "${HAZREQ_APP_MODE:-1}" != "0" ]; then
     for bin in chromium chromium-browser google-chrome chrome brave-browser microsoft-edge; do
       if command -v "$bin" >/dev/null; then
         ( sleep 1.5; "$bin" --app="$url" --window-size=1200,800 >/dev/null 2>&1 ) &
         return 0
       fi
     done
-    echo "HAZREQ_APP_MODE=1 set but no Chromium-family browser found; falling back to default browser" >&2
+    echo "App mode requested but no Chromium-family browser found; falling back to default browser" >&2
   fi
   command -v xdg-open >/dev/null && ( sleep 1.5; xdg-open "$url" ) &
 }
