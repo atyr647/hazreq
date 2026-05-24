@@ -34,13 +34,17 @@ Three paths — pick whichever fits.
 ### A. Tauri AppImage (recommended: native window, no Chromium)
 
 ```bash
-./deploy/build_tauri.sh           # run on the target arch (no cross-build)
+./deploy/build_tauri.sh           # cross-builds aarch64 from x86_64
 ./dist/hazreq-tauri-aarch64.AppImage
 ```
 
-A single ~55 MB AppImage that bundles the Rust Tauri shell + Python 3.11 + every Python dep + the app source. The shell opens a native WebKitGTK window (no browser chrome, fast startup) and spawns uvicorn as a child process; closing the window terminates the backend cleanly. Host deps on Void Linux: `sudo xbps-install -S webkit2gtk gtk+3 libreoffice` — `webkit2gtk` is the renderer, `libreoffice` does the docx→PDF conversion.
+A single ~145 MB AppImage that bundles **everything** needed to run on a Pi 400 / Void Linux: the Rust Tauri shell, Python 3.11 + every Python dep, the app source, and Void's webkit2gtk stack (lib + auxiliary processes + glib/gtk/cairo/pango/etc). The shell opens a native WebKitGTK window (no browser chrome, fast startup) and spawns uvicorn as a child process; closing the window terminates the backend cleanly.
 
-Build prerequisites on the Pi (one-time): Rust toolchain (`xbps-install -S rust cargo`) and `webkit2gtk-devel gtk+3-devel pkg-config`. Then `cargo install tauri-cli --version "^2.0"` and run `deploy/build_tauri.sh`. Cross-building the Tauri shell from x86_64 isn't supported — the Rust code links against webkit2gtk, which needs an aarch64 sysroot.
+**Zero systemd**: the bundle uses Void's webkit2gtk which is built against `elogind` (a standalone fork of systemd-logind) and `eudev` (Gentoo's standalone udev), not systemd. No `libsystemd.so.0` anywhere in the AppImage.
+
+Host deps on the Pi: only `libreoffice` for the docx→PDF conversion (`sudo xbps-install -S libreoffice`). Everything else is bundled.
+
+The build is fully cross-compilable from x86_64 — `deploy/build_tauri.sh` for the basic AppImage (host webkit), or `deploy/build_tauri_void.sh` to roll the fully-bundled variant by walking Void's xbps dep tree and assembling the AppDir manually.
 
 ### B. Plain Python AppImage (browser-based UI)
 
