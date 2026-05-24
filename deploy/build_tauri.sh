@@ -28,10 +28,18 @@ case "$ARCH" in
   aarch64) RUST_TARGET="aarch64-unknown-linux-gnu";  APPIMG_ARCH="aarch64" ;;
   *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
-if [ "$ARCH" != "$HOST_ARCH" ]; then
-  echo "Cross-building the Tauri shell isn't supported by this script." >&2
-  echo "Run me on the target architecture (aarch64 → on the Pi)." >&2
-  exit 1
+CROSS=0
+[ "$ARCH" != "$HOST_ARCH" ] && CROSS=1
+if [ "$CROSS" -eq 1 ]; then
+  echo "==> Cross-building Tauri shell for ${ARCH} on ${HOST_ARCH}"
+  # The Rust target + a cross gcc + arm64 dev libs must already be on the
+  # host. On Debian/Ubuntu that's: dpkg --add-architecture arm64, then
+  # apt install gcc-aarch64-linux-gnu libwebkit2gtk-4.1-dev:arm64
+  # libgtk-3-dev:arm64 librsvg2-dev:arm64 libayatana-appindicator3-dev:arm64
+  # libsoup-3.0-dev:arm64 (force-overwrite for pango .gir conflicts) and
+  # rustup target add ${RUST_TARGET}.
+  command -v "${ARCH}-linux-gnu-gcc" >/dev/null \
+    || { echo "missing ${ARCH}-linux-gnu-gcc cross compiler" >&2; exit 1; }
 fi
 
 BUILD="$REPO_ROOT/build-tauri/${ARCH}"
@@ -48,7 +56,15 @@ fi
 
 # ----- 2. Tauri shell binary --------------------------------------
 echo "==> Building Tauri shell for ${ARCH}"
-( cd "$REPO_ROOT/src-tauri" && cargo build --release --target "$RUST_TARGET" )
+if [ "$CROSS" -eq 1 ]; then
+  ( cd "$REPO_ROOT/src-tauri" && \
+    PKG_CONFIG_ALLOW_CROSS=1 \
+    PKG_CONFIG_LIBDIR="/usr/lib/${ARCH}-linux-gnu/pkgconfig:/usr/share/pkgconfig" \
+    PKG_CONFIG_SYSROOT_DIR=/ \
+    cargo build --release --target "$RUST_TARGET" )
+else
+  ( cd "$REPO_ROOT/src-tauri" && cargo build --release --target "$RUST_TARGET" )
+fi
 SHELL_BIN="$REPO_ROOT/src-tauri/target/${RUST_TARGET}/release/hazreq-shell"
 [ -x "$SHELL_BIN" ] || { echo "Tauri shell missing at $SHELL_BIN" >&2; exit 1; }
 
@@ -63,7 +79,14 @@ mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" \
 # Tauri shell finds it via $APPDIR/opt/hazreq/runtime/.
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-( cd "$WORK" && "$APPIMAGE" --appimage-extract >/dev/null )
+if [ "$CROSS" -eq 1 ]; then
+  QEMU="qemu-${ARCH}-static"
+  command -v "$QEMU" >/dev/null \
+    || { echo "missing $QEMU for cross-arch AppImage extraction" >&2; exit 1; }
+  ( cd "$WORK" && "$QEMU" "$APPIMAGE" --appimage-extract >/dev/null )
+else
+  ( cd "$WORK" && "$APPIMAGE" --appimage-extract >/dev/null )
+fi
 cp -a "$WORK/squashfs-root" "$APPDIR/opt/hazreq/runtime"
 # The python-appimage's AppRun would conflict with ours; drop it.
 rm -f "$APPDIR/opt/hazreq/runtime/AppRun" \
@@ -101,8 +124,16 @@ APPRUN
 chmod +x "$APPDIR/AppRun"
 
 # ----- 4. appimagetool --------------------------------------------
-TOOL="$BUILD/appimagetool-${APPIMG_ARCH}.AppImage"
-TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${APPIMG_ARCH}.AppImage"
+# Always download the host-arch tool — it just calls mksquashfs and embeds
+# the runtime named by the ARCH env var, so it packages any arch as long
+# as ARCH is set correctly below.
+case "$HOST_ARCH" in
+  x86_64)  TOOL_ARCH="x86_64" ;;
+  aarch64) TOOL_ARCH="aarch64" ;;
+  *) TOOL_ARCH="$HOST_ARCH" ;;
+esac
+TOOL="$BUILD/appimagetool-${TOOL_ARCH}.AppImage"
+TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${TOOL_ARCH}.AppImage"
 if [ ! -x "$TOOL" ]; then
   echo "==> Downloading appimagetool"
   if command -v curl >/dev/null; then
