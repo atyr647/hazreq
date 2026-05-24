@@ -39,7 +39,7 @@ fi
 
 PY_VERSION="${PY_VERSION:-3.11}"
 PY_FULL="${PY_FULL:-3.11.14}"
-BUILD="$REPO_ROOT/build-appimage"
+BUILD="$REPO_ROOT/build-appimage/${ARCH}"
 DIST="$REPO_ROOT/dist"
 mkdir -p "$BUILD" "$DIST"
 
