@@ -29,9 +29,20 @@ starts uvicorn with auto-reload at <http://localhost:8000>.
 
 ## Deployment on a Pi 400
 
-Two paths — pick whichever fits.
+Three paths — pick whichever fits.
 
-### A. AppImage (single-file portable binary)
+### A. Tauri AppImage (recommended: native window, no Chromium)
+
+```bash
+./deploy/build_tauri.sh           # run on the target arch (no cross-build)
+./dist/hazreq-tauri-aarch64.AppImage
+```
+
+A single ~55 MB AppImage that bundles the Rust Tauri shell + Python 3.11 + every Python dep + the app source. The shell opens a native WebKitGTK window (no browser chrome, fast startup) and spawns uvicorn as a child process; closing the window terminates the backend cleanly. Host deps on Void Linux: `sudo xbps-install -S webkit2gtk gtk+3 libreoffice` — `webkit2gtk` is the renderer, `libreoffice` does the docx→PDF conversion.
+
+Build prerequisites on the Pi (one-time): Rust toolchain (`xbps-install -S rust cargo`) and `webkit2gtk-devel gtk+3-devel pkg-config`. Then `cargo install tauri-cli --version "^2.0"` and run `deploy/build_tauri.sh`. Cross-building the Tauri shell from x86_64 isn't supported — the Rust code links against webkit2gtk, which needs an aarch64 sysroot.
+
+### B. Plain Python AppImage (browser-based UI)
 
 ```bash
 ./deploy/build_appimage.sh        # run on the SAME arch you're targeting
@@ -45,11 +56,11 @@ On first launch the AppImage:
 - creates `~/.local/share/hazreq/` for the SQLite DB, generated PDFs, backups
 - runs Alembic migrations
 - generates the starter docx template if missing
-- starts uvicorn on `127.0.0.1:8000` and opens the default browser (skip with `HAZREQ_NO_BROWSER=1`)
+- starts uvicorn on `127.0.0.1:8000` (auto-picks a free port if taken) and opens the UI
 
-Override anything via env vars (`HAZREQ_PORT`, `HAZREQ_HOST`, `HAZREQ_DATA_DIR`, etc.). If `HAZREQ_PORT` is unset, the launcher probes 8000–8009 for the first free port and falls back to a kernel-assigned one — so running two instances on the same box doesn't error out. By default the UI opens in a chromeless Chromium app window (`chromium --app=URL`); set `HAZREQ_APP_MODE=0` to open in a regular browser tab instead, or `HAZREQ_NO_BROWSER=1` to skip the auto-launch entirely. Build for the Pi 400 by running the script *on* the Pi (cross-compiling AppImages is doable but messier — qemu-static + binfmt).
+Override anything via env vars (`HAZREQ_PORT`, `HAZREQ_HOST`, `HAZREQ_DATA_DIR`, etc.). If `HAZREQ_PORT` is unset, the launcher probes 8000–8009 for the first free port and falls back to a kernel-assigned one. By default the UI opens in a chromeless Chromium app window (`chromium --app=URL`); set `HAZREQ_APP_MODE=0` to open in a regular browser tab instead, or `HAZREQ_NO_BROWSER=1` to skip the auto-launch entirely. Build for the Pi 400 by running the script *on* the Pi (cross-compiling AppImages is doable but messier — qemu-static + binfmt).
 
-### B. systemd install (always-on background service)
+### C. systemd install (always-on background service)
 
 ```bash
 sudo ./deploy/install.sh
