@@ -110,8 +110,8 @@ cp -a "$SYSROOT"/usr/share/icons/Adwaita "$APPDIR/usr/share/icons/" 2>/dev/null 
 cp -a "$SYSROOT"/usr/share/icons/hicolor "$APPDIR/usr/share/icons/" 2>/dev/null || true
 cp -a "$SYSROOT"/usr/share/mime/* "$APPDIR/usr/share/mime/" 2>/dev/null || true
 
-# Drop oversized icon resolutions to keep AppImage small. Keep only the
-# size webkit actually requests for inline UI (16x16 / scalable).
+# Drop oversized icon resolutions — webkit falls back to system/Adwaita.
+rm -rf "$APPDIR"/usr/share/icons/Adwaita 2>/dev/null || true
 find "$APPDIR/usr/share/icons" -type d \
   \( -name '8x8' -o -name '22x22' -o -name '24x24' \
      -o -name '32x32' -o -name '48x48' -o -name '64x64' -o -name '96x96' \
@@ -191,10 +191,9 @@ exec "$HERE/usr/bin/hazreq-shell" "$@"
 APPRUN
 chmod +x "$APPDIR/AppRun"
 
-# ----- 7. Package: mksquashfs (xz) + AppImage type2 runtime --------
-# appimagetool ships an embedded mksquashfs built without xz support;
-# bypass it and use the host's mksquashfs + the official aarch64 runtime
-# binary, then concatenate. AppImage type 2 = [runtime ELF][squashfs].
+# ----- 7. Package: mksquashfs (zstd) + AppImage type2 runtime ------
+# zstd because the AppImage type2 runtime's embedded squashfuse only
+# supports zlib + zstd. (xz is ~10% smaller but won't mount on target.)
 RUNTIME="$BUILD/runtime-aarch64"
 [ -x "$RUNTIME" ] || {
   echo "==> Downloading AppImage type2 aarch64 runtime"
@@ -207,7 +206,7 @@ command -v mksquashfs >/dev/null || { echo "install squashfs-tools" >&2; exit 1;
 echo "==> AppDir size: $(du -sh "$APPDIR" | cut -f1)"
 SQ="$BUILD/image.squashfs"
 rm -f "$SQ"
-mksquashfs "$APPDIR" "$SQ" -root-owned -noappend -comp xz -b 1M -Xdict-size 100%
+mksquashfs "$APPDIR" "$SQ" -root-owned -noappend -comp zstd -Xcompression-level 22 -b 1M
 OUT="$DIST/hazreq-tauri-${ARCH}.AppImage"
 cat "$RUNTIME" "$SQ" > "$OUT"
 chmod +x "$OUT"
