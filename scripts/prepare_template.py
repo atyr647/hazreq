@@ -15,7 +15,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from docx import Document
+from docx.oxml.ns import qn
 from docx.table import _Cell
+from lxml import etree
 
 from app.config import REPO_ROOT, settings
 
@@ -52,6 +54,12 @@ def _set_cell_text(cell: _Cell, text: str, bold: bool | None = None) -> None:
         run.bold = bold
 
 
+def _mark_as_repeating_header(row) -> None:
+    """Set w:tblHeader so the row reprints at the top of each new page."""
+    tr_pr = row._tr.get_or_add_trPr()
+    etree.SubElement(tr_pr, qn("w:tblHeader")).set(qn("w:val"), "true")
+
+
 def main() -> None:
     if not SOURCE_DOCX.exists():
         raise FileNotFoundError(
@@ -64,6 +72,13 @@ def main() -> None:
 
     for (row, col), placeholder in HEADER_PLACEHOLDERS.items():
         _set_cell_text(table.rows[row].cells[col], placeholder)
+
+    # Flag the SPMIG / NONMENCLATURE / NIIN / QTY row as a repeating header.
+    # Word respects this; LibreOffice only repeats header rows that are
+    # contiguous from row 0, so on LO-rendered overflow pages the column
+    # labels still won't reprint. Acceptable trade-off for now — restructuring
+    # the source form into two tables would let LO honor it.
+    _mark_as_repeating_header(table.rows[ITEMS_HEADER_ROW])
 
     # docxtpl row loop. The {%tr ... %} marker consumes its entire row,
     # so we use row 10 for the opening tag, row 11 as the repeating data
