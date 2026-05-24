@@ -128,6 +128,11 @@ def _render_docx_to_pdf(snap: RequestSnapshot) -> bytes:
     return _convert_docx_to_pdf(docx_bytes)
 
 
+# The source form prints six blank line-item rows. Pad to this minimum
+# so a short request still looks like the original chit.
+DOCX_MIN_LINE_ROWS = 6
+
+
 def _render_docx_bytes(snap: RequestSnapshot) -> bytes:
     from docxtpl import DocxTemplate  # lazy import
 
@@ -136,6 +141,13 @@ def _render_docx_bytes(snap: RequestSnapshot) -> bytes:
         raise PdfRenderError(
             f"Template not found at {template_path}. Run scripts/prepare_template.py."
         )
+    lines = [
+        {"spmig": ln.spmig, "nomenclature": ln.nomenclature, "niin": ln.niin, "qty": ln.qty}
+        for ln in snap.lines
+    ]
+    while len(lines) < DOCX_MIN_LINE_ROWS:
+        lines.append({"spmig": "", "nomenclature": "", "niin": "", "qty": ""})
+
     tpl = DocxTemplate(str(template_path))
     tpl.render(
         {
@@ -144,15 +156,7 @@ def _render_docx_bytes(snap: RequestSnapshot) -> bytes:
             "lpo": snap.lpo,
             "location": snap.location,
             "datetime": snap.datetime,
-            "lines": [
-                {
-                    "spmig": ln.spmig,
-                    "nomenclature": ln.nomenclature,
-                    "niin": ln.niin,
-                    "qty": ln.qty,
-                }
-                for ln in snap.lines
-            ],
+            "lines": lines,
         }
     )
     buf = io.BytesIO()

@@ -137,7 +137,7 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 
 | # | Task | Status | Notes |
 |---|---|---|---|
-| 7.1 | Prepare `.docx` template with Jinja tags + `{%tr for line in lines %}` row loop | Done | Generated via `scripts/prepare_template.py` — placeholder approximating the source chit; replace when a definitive form is provided |
+| 7.1 | Prepare `.docx` template with Jinja tags + `{%tr for line in lines %}` row loop | Done | Generated via `scripts/prepare_template.py` from `BLANK NEW HAZMAT ISSUE CHIT 2.0.docx` — placeholders injected into the real source form (watermark, borders, notes preserved) |
 | 7.2 | Mark items table header as "Repeat as header row at top of each page" | Done | Pagination for long requests |
 | 7.3 | `pdf_service.render(request_id) -> bytes` (snapshot-only data) | Done | Web-portability invariant |
 | 7.4 | `pdf_store.save(request_id, bytes)` separate persistence layer | Done | No-op on hypothetical web port |

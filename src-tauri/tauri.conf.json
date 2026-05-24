@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "hazreq",
+  "version": "0.1.0",
+  "identifier": "mil.navy.hazreq",
+  "build": {
+    "frontendDist": "../src-tauri/empty-frontend"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": ["icons/icon.png"],
+    "category": "Productivity",
+    "shortDescription": "Offline hazmat request generator",
+    "longDescription": "Offline hazmat request generator. Bundles a Python backend and renders the UI in a native WebKitGTK window.",
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libreoffice-writer"
+        ]
+      }
+    }
+  }
+}
