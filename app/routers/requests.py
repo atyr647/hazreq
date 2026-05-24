@@ -247,6 +247,40 @@ def add_line(
     return render_partial("requests/_line.html", {"line": line, "r": r})
 
 
+@router.post("/{request_id}/items", name="add_item")
+def add_item(
+    request_id: int,
+    request: Request,
+    hazmat_item_id: int = Form(...),
+    db: Session = Depends(get_session),
+):
+    r = _get_request_or_404(db, request_id)
+    _ensure_editable(r)
+    item = db.execute(
+        select(HazmatItem)
+        .options(selectinload(HazmatItem.spmig))
+        .where(HazmatItem.id == hazmat_item_id)
+    ).scalar_one_or_none()
+    if not item:
+        raise HTTPException(404, "Hazmat item not found")
+    # Dedup: ignore if this item is already on the request.
+    if any(ln.hazmat_item_id == item.id for ln in r.lines):
+        return Response(status_code=204)
+    line = RequestLine(
+        request_id=r.id,
+        sort_order=_next_sort(db, r.id),
+        hazmat_item_id=item.id,
+        spmig_code=item.spmig.code if item.spmig else None,
+        nomenclature=item.nomenclature,
+        niin=item.niin,
+        qty=1,
+    )
+    db.add(line)
+    db.commit()
+    db.refresh(line)
+    return render_partial("requests/_line.html", {"line": line, "r": r})
+
+
 @router.post("/{request_id}/load-mrc", name="load_mrc")
 def load_mrc(
     request_id: int,

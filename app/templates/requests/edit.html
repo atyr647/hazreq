@@ -48,14 +48,31 @@
 </div>
 
 <div class="card">
-  <h2>Load items from an MRC</h2>
-  <p class="muted">Search by MIP code, MRC code, or any keyword. Click a result to append all of its items.</p>
+  <h2>Add items</h2>
+  <p class="muted">Search the catalog by nomenclature, SPMIG, or NIIN. Click <strong>Add</strong> to append one item, or load an entire MRC's worth at once.</p>
+
+  <label class="field-label">Search items</label>
   <input type="search"
-    placeholder="e.g. MIP-1234 M-1"
-    data-hr-search="{{ url_for('search_mrc') }}"
-    data-hr-target="mrc-search-results"
+    placeholder="e.g. lubricating oil, SPMIG-001, 00-281-1985"
+    data-hr-search="{{ url_for('search_items') }}"
+    data-hr-target="item-search-results"
     data-hr-min="1">
-  <div id="mrc-search-results"></div>
+  <div id="item-search-results"></div>
+
+  <details style="margin-top:1rem">
+    <summary class="muted">Or load every item from an MRC</summary>
+    <label class="field-label" style="margin-top:.75rem">MRC search</label>
+    <input type="search"
+      placeholder="e.g. MIP-1234 M-1"
+      data-hr-search="{{ url_for('search_mrc') }}"
+      data-hr-target="mrc-search-results"
+      data-hr-min="1">
+    <div id="mrc-search-results"></div>
+  </details>
+
+  <p class="muted" style="margin-top:1rem">
+    Can't find an item? <a href="{{ url_for('list_spmigs') }}">Add it to the catalog</a>, then come back.
+  </p>
 </div>
 
 <div class="card">
@@ -76,18 +93,9 @@
       {% endfor %}
     </tbody>
   </table>
-
-  <h3>Add a manual line</h3>
-  <form id="add-line-form" method="post" action="{{ url_for('add_line', request_id=r.id) }}"
-        data-hr-form data-hr-target="lines-tbody" data-hr-swap="append" data-hr-reset="1">
-    <div class="field-row">
-      <div class="field"><label>SPMIG</label><input name="spmig_code"></div>
-      <div class="field"><label>Nomenclature</label><input name="nomenclature"></div>
-      <div class="field"><label>NIIN</label><input name="niin"></div>
-      <div class="field"><label>Qty (required)</label><input name="qty" type="number" step="1" min="1" inputmode="numeric" required></div>
-    </div>
-    <button type="submit">+ Add line</button>
-  </form>
+  {% if not r.lines %}
+    <p class="muted" style="margin-top:.75rem">No items yet — use the search above to add some.</p>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -112,33 +120,52 @@
 </div>
 
 <script>
-// Wire up "Add to request" buttons inside dynamically loaded MRC search results.
+// Wire up "Add to request" buttons inside dynamically loaded search results.
+async function appendLinesFrom(html) {
+  const tbody = document.getElementById('lines-tbody');
+  const tmp = document.createElement('tbody');
+  tmp.innerHTML = html;
+  while (tmp.firstChild) {
+    const node = tmp.firstChild;
+    tbody.appendChild(node);
+    if (node.nodeType === 1 && window.hazreq) window.hazreq.bind(node);
+  }
+}
+
 document.addEventListener('click', async function (ev) {
-  const btn = ev.target.closest('[data-load-mrc]');
-  if (!btn) return;
-  ev.preventDefault();
-  const mrcId = btn.dataset.loadMrc;
-  btn.disabled = true;
-  btn.textContent = 'Adding…';
-  try {
-    const fd = new FormData();
-    fd.append('mrc_id', mrcId);
-    const resp = await fetch('{{ url_for("load_mrc", request_id=r.id) }}', { method: 'POST', body: fd });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const html = await resp.text();
-    const tbody = document.getElementById('lines-tbody');
-    const tmp = document.createElement('tbody');
-    tmp.innerHTML = html;
-    while (tmp.firstChild) {
-      const node = tmp.firstChild;
-      tbody.appendChild(node);
-      if (node.nodeType === 1 && window.hazreq) window.hazreq.bind(node);
+  const mrcBtn = ev.target.closest('[data-load-mrc]');
+  if (mrcBtn) {
+    ev.preventDefault();
+    mrcBtn.disabled = true;
+    mrcBtn.textContent = 'Adding…';
+    try {
+      const fd = new FormData(); fd.append('mrc_id', mrcBtn.dataset.loadMrc);
+      const resp = await fetch('{{ url_for("load_mrc", request_id=r.id) }}', { method: 'POST', body: fd });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      await appendLinesFrom(await resp.text());
+      mrcBtn.textContent = 'Added';
+    } catch (e) {
+      mrcBtn.disabled = false; mrcBtn.textContent = 'Add to request';
+      alert('Failed to add: ' + e.message);
     }
-    btn.textContent = 'Added';
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = 'Add to request';
-    alert('Failed to add: ' + e.message);
+    return;
+  }
+  const itemBtn = ev.target.closest('[data-add-item]');
+  if (itemBtn) {
+    ev.preventDefault();
+    itemBtn.disabled = true;
+    itemBtn.textContent = 'Adding…';
+    try {
+      const fd = new FormData(); fd.append('hazmat_item_id', itemBtn.dataset.addItem);
+      const resp = await fetch('{{ url_for("add_item", request_id=r.id) }}', { method: 'POST', body: fd });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (resp.status !== 204) await appendLinesFrom(await resp.text());
+      itemBtn.textContent = 'Added';
+    } catch (e) {
+      itemBtn.disabled = false; itemBtn.textContent = 'Add';
+      alert('Failed to add: ' + e.message);
+    }
+    return;
   }
 });
 

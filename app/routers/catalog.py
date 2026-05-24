@@ -445,3 +445,28 @@ def search_mrc(q: str = "", db: Session = Depends(get_session)):
     stmt = stmt.order_by(MIP.code, MRC.code).limit(40)
     rows = db.execute(stmt).scalars().all()
     return render_partial("catalog/_mrc_search_results.html", {"rows": rows, "q": q})
+
+
+@router.get("/search/items", name="search_items")
+def search_items(q: str = "", db: Session = Depends(get_session)):
+    """Returns HTML fragment of HazmatItem matches.
+
+    Matches across SPMIG code, NIIN, and nomenclature. Tokens are
+    AND-combined.
+    """
+    tokens = [t.strip() for t in q.split() if t.strip()]
+    stmt = (
+        select(HazmatItem)
+        .options(selectinload(HazmatItem.spmig))
+        .join(SPMIG, HazmatItem.spmig_id == SPMIG.id)
+    )
+    for tok in tokens:
+        like = f"%{tok}%"
+        stmt = stmt.where(
+            (SPMIG.code.ilike(like))
+            | (HazmatItem.nomenclature.ilike(like))
+            | (HazmatItem.niin.ilike(like))
+        )
+    stmt = stmt.order_by(SPMIG.code, HazmatItem.nomenclature).limit(40)
+    rows = db.execute(stmt).scalars().all()
+    return render_partial("catalog/_item_search_results.html", {"rows": rows, "q": q})
