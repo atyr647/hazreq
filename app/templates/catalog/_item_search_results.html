@@ -1,0 +1,23 @@
+{% if rows %}
+  <div class="search-results">
+    {% for it in rows %}
+      <div class="result">
+        <div>
+          <strong>{{ it.nomenclature }}</strong>
+          <div class="meta">
+            <span class="tag">{{ it.spmig.code }}</span>
+            {% if it.niin %}<span class="tag">NIIN {{ it.niin }}</span>{% endif %}
+          </div>
+        </div>
+        <button type="button" class="primary small" data-add-item="{{ it.id }}">Add</button>
+      </div>
+    {% endfor %}
+  </div>
+{% elif q %}
+  <div class="search-results">
+    <div class="empty">
+      No matches for "{{ q }}".
+      <a href="{{ url_for('list_spmigs') }}">Add it to the catalog →</a>
+    </div>
+  </div>
+{% endif %}
