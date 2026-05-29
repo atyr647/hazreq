@@ -86,6 +86,8 @@ All paths are env-driven (see `app/config.py`):
 | `HAZREQ_UNOSERVER_HOST`     | `127.0.0.1`                       | unoserver host                |
 | `HAZREQ_UNOSERVER_PORT`     | `2003`                            | unoserver port                |
 | `HAZREQ_PERSIST_PDFS`       | `1`                               | Set to `0` for ephemeral PDFs |
+| `HAZREQ_PDF_BACKEND`        | `docx`                            | `overlay` \| `docx` \| `fillable_pdf` |
+| `HAZREQ_OVERLAY_PDF_PATH`   | `./Hazmat Request Blank.pdf`      | Blank chit for the `overlay` backend |
 
 A future web port can flip `HAZREQ_DB_URL` to `:memory:` and
 `HAZREQ_PERSIST_PDFS` to `0` to run with no server-side persistence.
@@ -98,8 +100,19 @@ A future web port can flip `HAZREQ_DB_URL` to `:memory:` and
   for partial updates (no HTMX/Alpine to vendor).
 - `request_line` snapshots SPMIG / nomenclature / NIIN at line creation —
   catalog edits never alter past requests.
-- The PDF pipeline tries `unoserver` (warm headless LibreOffice over a local
-  socket) first, falling back to spawning `soffice --headless` on demand.
+- Three PDF backends, picked with `HAZREQ_PDF_BACKEND`:
+  - `overlay` (recommended on the Pi) — pure-Python. Draws the request's
+    values onto the static blank chit (`Hazmat Request Blank.pdf`) with
+    reportlab and merges with pypdf. **No LibreOffice**; a render is ~20 ms
+    vs. LibreOffice's multi-second cold start. Coordinates are measured once
+    from the blank form in `app/services/pdf.py`; re-measure if the master
+    form is re-laid-out. Overflows onto extra copies of the line-item page,
+    7 rows each, with the signature page kept last.
+  - `docx` (default) — fill the docxtpl template, then convert to PDF via
+    `unoserver` (warm headless LibreOffice over a local socket) first,
+    falling back to spawning `soffice --headless` on demand.
+  - `fillable_pdf` — fill an AcroForm PDF directly via pypdf (needs a
+    fillable source form named per the convention in `app/services/pdf.py`).
 
 ## Replacing the form template
 

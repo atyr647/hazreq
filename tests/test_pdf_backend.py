@@ -64,6 +64,62 @@ def test_docx_backend_handles_many_lines(client):
     assert "Item 35" in text
 
 
+def _pdf_text(b: bytes) -> str:
+    import io
+
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(b))
+    return " ".join(page.extract_text() or "" for page in reader.pages)
+
+
+def _pdf_pages(b: bytes) -> int:
+    import io
+
+    from pypdf import PdfReader
+
+    return len(PdfReader(io.BytesIO(b)).pages)
+
+
+def test_overlay_backend_fills_form_over_blank(client):
+    """Pure-Python overlay onto the shipped blank chit — no LibreOffice."""
+    from app.config import settings
+    from app.services.pdf import LineSnapshot, RequestSnapshot, _render_overlay_pdf
+
+    assert settings.overlay_pdf_path.exists(), "blank chit PDF should ship in the repo"
+    snap = RequestSnapshot(
+        id=1, name="SN J. DOE", workcenter="ENG-2", lpo="PO1 SMITH",
+        location="BLDG 7", datetime="2026-05-29 09:30",
+        lines=[
+            LineSnapshot(spmig="M0001", nomenclature="CLEANER", niin="001234567", qty="2"),
+            LineSnapshot(spmig="G0102", nomenclature="GREASE", niin="034567890", qty="1"),
+        ],
+    )
+    b = _render_overlay_pdf(snap)
+    assert b.startswith(b"%PDF")
+    # one line-item page + the form's trailing signature page
+    assert _pdf_pages(b) == 2
+    text = _pdf_text(b)
+    for needle in ("SN J. DOE", "ENG-2", "PO1 SMITH", "2026-05-29 09:30", "001234567"):
+        assert needle in text, needle
+
+
+def test_overlay_backend_paginates_overflow(client):
+    from app.services.pdf import LineSnapshot, RequestSnapshot, _render_overlay_pdf
+
+    lines = [
+        LineSnapshot(spmig=f"S{i:04d}", nomenclature=f"ITEM {i}", niin=f"{i:09d}", qty="1")
+        for i in range(16)
+    ]
+    snap = RequestSnapshot(
+        id=2, name="N", workcenter="W", lpo="L", location="X",
+        datetime="2026-05-29 09:00", lines=lines,
+    )
+    b = _render_overlay_pdf(snap)
+    # 16 lines / 7 per page = 3 filled pages + 1 signature page
+    assert _pdf_pages(b) == 4
+
+
 @pytest.mark.skipif(
     not os.environ.get("HAZREQ_FILLABLE_PDF_PATH"),
     reason="No fillable PDF source provided",

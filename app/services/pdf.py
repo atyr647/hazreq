@@ -112,6 +112,8 @@ def render_request_pdf(r: ReqModel) -> Path | None:
 
 def render_pdf_bytes(snap: RequestSnapshot) -> bytes:
     backend = (settings.pdf_backend or "docx").lower()
+    if backend == "overlay":
+        return _render_overlay_pdf(snap)
     if backend == "fillable_pdf":
         return _render_fillable_pdf(snap)
     if backend == "docx":
@@ -230,6 +232,149 @@ def _convert_via_soffice(docx_bytes: bytes) -> bytes:
                 f"libreoffice failed: {result.stderr.decode('utf-8', 'ignore').strip()}"
             )
         return pdfs[0].read_bytes()
+
+
+# ============================================================
+# Backend: overlay (pure-Python, no LibreOffice)
+# ============================================================
+#
+# Draws the request's values onto the static blank chit
+# ("Hazmat Request Blank.pdf") with reportlab, then merges that overlay
+# onto the real form pages with pypdf. No AcroForm, no docx, no soffice —
+# a render is a few milliseconds, which is the whole point on a Pi 400.
+#
+# Coordinates were measured once from the blank form (Letter, 612x792 pt)
+# with pdfminer. Origin here is top-left (y grows downward); the renderer
+# converts to PDF's bottom-left origin at draw time. If the master form
+# is re-laid-out, re-measure these.
+
+PAGE_W, PAGE_H = 612.0, 792.0
+
+# attr on RequestSnapshot -> (value_x, band_top_y, band_bottom_y)
+_OVERLAY_HEADER = {
+    "location": (185.0, 245.8, 271.8),
+    "name": (122.0, 297.9, 323.6),
+    "datetime": (151.0, 323.6, 349.6),
+    "workcenter": (158.0, 349.6, 375.6),
+    "lpo": (112.0, 375.6, 401.6),
+}
+
+# Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
+_OVERLAY_COLS = {
+    "spmig": (76.5, 206.8),
+    "nomenclature": (206.8, 360.1),
+    "niin": (360.1, 503.2),
+    "qty": (503.2, 553.7),
+}
+# Horizontal rules bounding each of the 7 line rows (top-origin y).
+_OVERLAY_ROW_RULES = [453.6, 479.6, 505.6, 531.7, 557.7, 583.4, 609.5, 635.5]
+_OVERLAY_ROWS_PER_PAGE = len(_OVERLAY_ROW_RULES) - 1  # 7
+
+_OVERLAY_FONT = "Helvetica"
+_HEADER_SIZE = 10.0
+_ROW_SIZE = 9.0
+_CELL_PAD = 4.0
+
+
+def _fit_text(canvas_mod, text: str, max_w: float, size: float) -> tuple[str, float]:
+    """Return (text, size) shrinking the font (to 6pt) then truncating with
+    an ellipsis so the string fits within max_w."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    text = text or ""
+    s = size
+    while s > 6.0 and stringWidth(text, _OVERLAY_FONT, s) > max_w:
+        s -= 0.5
+    if stringWidth(text, _OVERLAY_FONT, s) <= max_w:
+        return text, s
+    while text and stringWidth(text + "…", _OVERLAY_FONT, s) > max_w:
+        text = text[:-1]
+    return (text + "…") if text else "", s
+
+
+def _draw_cell(c, col: str, text: str, row_top: float, row_bottom: float, center: bool) -> None:
+    x0, x1 = _OVERLAY_COLS[col]
+    max_w = (x1 - x0) - 2 * _CELL_PAD
+    text, size = _fit_text(c, text, max_w, _ROW_SIZE)
+    if not text:
+        return
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    baseline_top = (row_top + row_bottom) / 2 + size * 0.35
+    y = PAGE_H - baseline_top
+    c.setFont(_OVERLAY_FONT, size)
+    x = (x0 + x1) / 2 - stringWidth(text, _OVERLAY_FONT, size) / 2 if center else x0 + _CELL_PAD
+    c.drawString(x, y, text)
+
+
+def _overlay_page_bytes(snap: RequestSnapshot, lines: list[LineSnapshot]) -> bytes:
+    """One overlay page: header block + up to 7 line rows."""
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
+
+    c.setFont(_OVERLAY_FONT, _HEADER_SIZE)
+    for attr, (vx, top, bot) in _OVERLAY_HEADER.items():
+        val = getattr(snap, attr, "") or ""
+        if not val:
+            continue
+        baseline_top = (top + bot) / 2 + _HEADER_SIZE * 0.35
+        c.drawString(vx, PAGE_H - baseline_top, val)
+
+    for i, line in enumerate(lines):
+        row_top = _OVERLAY_ROW_RULES[i]
+        row_bottom = _OVERLAY_ROW_RULES[i + 1]
+        _draw_cell(c, "spmig", line.spmig, row_top, row_bottom, center=False)
+        _draw_cell(c, "nomenclature", line.nomenclature, row_top, row_bottom, center=False)
+        _draw_cell(c, "niin", line.niin, row_top, row_bottom, center=True)
+        _draw_cell(c, "qty", line.qty, row_top, row_bottom, center=True)
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
+    src = settings.overlay_pdf_path
+    if not src or not Path(src).exists():
+        raise PdfRenderError(
+            f"Overlay form not found at {src}. Set HAZREQ_OVERLAY_PDF_PATH to the blank chit PDF."
+        )
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except ImportError as e:  # pragma: no cover
+        raise PdfRenderError("overlay backend needs pypdf") from e
+
+    blank_bytes = Path(src).read_bytes()
+    template = PdfReader(io.BytesIO(blank_bytes))
+    n_form_pages = len(template.pages)
+
+    # Chunk lines across as many copies of the first (line-item) page as
+    # needed; at least one page even when there are no lines.
+    chunks = [
+        snap.lines[i : i + _OVERLAY_ROWS_PER_PAGE]
+        for i in range(0, max(len(snap.lines), 1), _OVERLAY_ROWS_PER_PAGE)
+    ] or [[]]
+
+    writer = PdfWriter()
+    for chunk in chunks:
+        src = PdfReader(io.BytesIO(blank_bytes)).pages[0]
+        # Attach to the writer first, then merge onto the writer-owned page —
+        # pypdf's supported (and reliable) overlay path.
+        page = writer.add_page(src)
+        overlay = PdfReader(io.BytesIO(_overlay_page_bytes(snap, chunk))).pages[0]
+        page.merge_page(overlay)
+
+    # Append the remaining form pages (signatures / notes) once, at the end.
+    if n_form_pages > 1:
+        tail = PdfReader(io.BytesIO(blank_bytes))
+        for p in tail.pages[1:]:
+            writer.add_page(p)
+
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 # ============================================================

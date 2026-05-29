@@ -30,6 +30,7 @@ class Settings:
     persist_pdfs: bool
     pdf_backend: str
     fillable_pdf_path: Path | None
+    overlay_pdf_path: Path
     printer: str | None
     browser_storage: bool
     sessions_dir: Path
@@ -40,6 +41,12 @@ class Settings:
         db_default = f"sqlite:///{data_dir / 'hazreq.db'}"
         fillable_default = data_dir / "templates" / "hazmat_chit_fillable.pdf"
         fillable = _path("HAZREQ_FILLABLE_PDF_PATH", fillable_default)
+        # Static blank form used by the pure-Python "overlay" backend.
+        # Ships at the repo root; falls back to data/templates if relocated.
+        overlay_default = REPO_ROOT / "Hazmat Request Blank.pdf"
+        if not overlay_default.exists():
+            overlay_default = data_dir / "templates" / "Hazmat Request Blank.pdf"
+        overlay = _path("HAZREQ_OVERLAY_PDF_PATH", overlay_default)
         sessions_default = Path(tempfile.gettempdir()) / "hazreq-sessions"
         return cls(
             db_url=os.environ.get("HAZREQ_DB_URL", db_default),
@@ -51,6 +58,7 @@ class Settings:
             persist_pdfs=os.environ.get("HAZREQ_PERSIST_PDFS", "1") != "0",
             pdf_backend=os.environ.get("HAZREQ_PDF_BACKEND", "docx").lower(),
             fillable_pdf_path=fillable,
+            overlay_pdf_path=overlay,
             printer=(os.environ.get("HAZREQ_PRINTER") or None),
             browser_storage=os.environ.get("HAZREQ_BROWSER_STORAGE", "0") == "1",
             sessions_dir=_path("HAZREQ_SESSIONS_DIR", sessions_default),

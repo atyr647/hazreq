@@ -14,19 +14,25 @@ What it does, in order:
   3. Creates a fresh draft request and opens the Tk window on it.
 
 Requires Tk (python3-tk / python3-tkinter on the host) and a display.
-The PDF backend is unchanged: HAZREQ_PDF_BACKEND=docx still shells out to
-LibreOffice on finalize, so that step stays as slow as it is today — the
-prototype is about UI responsiveness, not the PDF pipeline.
+
+PDF backend: defaults to the pure-Python "overlay" backend so finalize is
+LibreOffice-free and near-instant (~20 ms). Override by exporting
+HAZREQ_PDF_BACKEND=docx (LibreOffice) before launching.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+# Prefer the fast, dependency-free PDF path unless the user asked otherwise.
+# Must happen before app.config is imported (settings load at import time).
+os.environ.setdefault("HAZREQ_PDF_BACKEND", "overlay")
 
 
 def ensure_migrated() -> None:

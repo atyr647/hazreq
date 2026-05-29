@@ -19,6 +19,7 @@ Layout:
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -389,7 +390,10 @@ class BuilderApp(ttk.Frame):
                     path = repo.finalize(s, self.request_id)
                 self.after(0, lambda: self._finalize_done(path))
             except Exception as e:  # noqa: BLE001
-                self.after(0, lambda: self._finalize_failed(str(e)))
+                # Bind the message now — `e` is unbound once the except
+                # block exits, and this lambda runs later via after().
+                msg = str(e)
+                self.after(0, lambda: self._finalize_failed(msg))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -474,9 +478,7 @@ def run(request_id: int) -> None:
     root = tk.Tk()
     root.title("hazreq — new request (Tk prototype)")
     root.geometry("1100x720")
-    try:
+    with contextlib.suppress(tk.TclError):
         ttk.Style().theme_use("clam")  # cleaner than the default motif look
-    except tk.TclError:
-        pass
     BuilderApp(root, request_id)
     root.mainloop()

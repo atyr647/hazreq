@@ -212,6 +212,7 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 | 11.3 | Dedup hazmat items on MRC bulk-load | Done | Skipped items reported in the inline notice |
 | 11.4 | Finalize requires manually filled `qty > 0` on every line | Done | Server-side validation + visual yellow flag in UI on missing-qty lines |
 | 11.5 | Fillable-PDF backend behind `HAZREQ_PDF_BACKEND=fillable_pdf` | Done | pypdf AcroForm fill; field-name convention documented in `app/services/pdf.py`; reportlab fallback for overflow page |
+| 11.5a | Pure-Python `overlay` PDF backend (no LibreOffice) | Done | `HAZREQ_PDF_BACKEND=overlay`; reportlab draws values onto the shipped blank chit, merged with pypdf. ~20 ms/render vs. LibreOffice cold start. Coordinates measured from the blank form; 7 rows/page with paginated overflow, signature page last. Recommended on the Pi 400. |
 | 11.6 | CSV catalog export / import (`.zip` round-trip) | Done | 5 CSVs (spmigs/mips/hazmat_items/mrcs/mrc_items) matched on natural keys; updates rather than duplicates |
 | 11.7 | Direct-to-printer via CUPS (`lp`) | Done | "Print to printer" + "Finalize & print" buttons; `HAZREQ_PRINTER` env override; auto-discovers printers via `lpstat -e` |
 | 11.8 | Restore endpoint also clears WAL/SHM sidecars | Done | Avoids stale-WAL replay when swapping the DB file |
