@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Launch the native Tk new-request builder (prototype).
+
+    PYTHONPATH=. python scripts/tk_prototype.py
+
+What it does, in order:
+
+  1. Ensures the DB schema is current — but only runs Alembic if the DB
+     is actually behind head (the gated-migration approach; a no-op run
+     on an up-to-date DB is what makes native startup feel instant vs.
+     the current "migrate on every launch").
+  2. Seeds a small sample catalog if the catalog is empty, so there is
+     something to search. No-op once real data exists.
+  3. Creates a fresh draft request and opens the Tk window on it.
+
+Requires Tk (python3-tk / python3-tkinter on the host) and a display.
+The PDF backend is unchanged: HAZREQ_PDF_BACKEND=docx still shells out to
+LibreOffice on finalize, so that step stays as slow as it is today — the
+prototype is about UI responsiveness, not the PDF pipeline.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
+def ensure_migrated() -> None:
+    """Upgrade to head only if the DB isn't already there."""
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    from app.config import settings
+    from app.db import engine
+
+    cfg = Config(str(REPO_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", "app/migrations")
+    cfg.set_main_option("sqlalchemy.url", settings.db_url)
+    head = ScriptDirectory.from_config(cfg).get_current_head()
+
+    with engine.connect() as conn:
+        current = MigrationContext.configure(conn).get_current_revision()
+
+    if current == head:
+        return  # already current — skip Alembic entirely
+    from alembic import command
+
+    command.upgrade(cfg, "head")
+
+
+def main() -> int:
+    ensure_migrated()
+
+    from app.ui import seed
+
+    if seed.seed_if_empty():
+        print("Seeded sample catalog (first run).")
+
+    try:
+        import tkinter  # noqa: F401
+    except ModuleNotFoundError:
+        print(
+            "Tk is not available for this Python. Install it on the host:\n"
+            "  Debian/Raspberry Pi OS:  sudo apt install python3-tk\n"
+            "  Void Linux:              sudo xbps-install -S python3-tkinter",
+            file=sys.stderr,
+        )
+        return 1
+
+    from app.ui import builder, repo
+
+    with repo.session_scope() as s:
+        request_id = repo.create_draft(s)
+
+    builder.run(request_id)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
