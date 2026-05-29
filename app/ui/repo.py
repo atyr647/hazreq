@@ -11,8 +11,10 @@ endpoints in app/routers/catalog.py.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +23,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db import SessionLocal
 from app.models import MIP, MRC, SPMIG, HazmatItem, MRCItem, Request, RequestLine
+from app.services import printer as printer_service
 from app.services.pdf import render_request_pdf
 
 HEADER_FIELDS = ("requestor_name", "workcenter", "lpo", "hazmat_location")
@@ -303,3 +306,146 @@ def finalize(s: Session, request_id: int) -> Path | None:
         r.finalized_at = datetime.utcnow()
     r.pdf_path = str(path) if path else None
     return path
+
+
+# ---- history (mirrors requests.list_requests + the request actions) ----
+
+@dataclass(frozen=True)
+class RequestRow:
+    """Flat display row for the history list — safe to use after the
+    session closes (no lazy ORM attributes)."""
+
+    id: int
+    when: str
+    requestor: str
+    workcenter: str
+    lpo: str
+    location: str
+    finalized: bool
+    line_count: int
+    has_pdf: bool
+
+    @property
+    def status(self) -> str:
+        return "Final" if self.finalized else "Draft"
+
+
+def list_requests(
+    s: Session,
+    q: str = "",
+    status_filter: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    limit: int = 200,
+) -> list[RequestRow]:
+    stmt = (
+        select(Request)
+        .options(selectinload(Request.lines))
+        .order_by(Request.created_at.desc())
+    )
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        line_match = select(RequestLine.request_id).where(
+            RequestLine.nomenclature.ilike(like)
+            | RequestLine.spmig_code.ilike(like)
+            | RequestLine.niin.ilike(like)
+        )
+        stmt = stmt.where(
+            Request.requestor_name.ilike(like)
+            | Request.workcenter.ilike(like)
+            | Request.lpo.ilike(like)
+            | Request.hazmat_location.ilike(like)
+            | Request.id.in_(line_match)
+        )
+    if status_filter == "draft":
+        stmt = stmt.where(Request.finalized_at.is_(None))
+    elif status_filter == "final":
+        stmt = stmt.where(Request.finalized_at.is_not(None))
+    if date_from:
+        with contextlib.suppress(ValueError):
+            stmt = stmt.where(Request.created_at >= datetime.strptime(date_from, "%Y-%m-%d"))
+    if date_to:
+        with contextlib.suppress(ValueError):
+            dt = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            stmt = stmt.where(Request.created_at < dt)
+
+    rows = s.execute(stmt.limit(limit)).scalars().all()
+    out: list[RequestRow] = []
+    for r in rows:
+        when = r.datetime_of_request or r.created_at
+        out.append(
+            RequestRow(
+                id=r.id,
+                when=when.strftime("%Y-%m-%d %H:%M") if when else "",
+                requestor=(r.requestor_name or "").strip(),
+                workcenter=(r.workcenter or "").strip(),
+                lpo=(r.lpo or "").strip(),
+                location=(r.hazmat_location or "").strip(),
+                finalized=r.finalized_at is not None,
+                line_count=len(r.lines),
+                has_pdf=bool(r.pdf_path) and Path(r.pdf_path).exists(),
+            )
+        )
+    return out
+
+
+def is_finalized(s: Session, request_id: int) -> bool:
+    return get_request(s, request_id).finalized_at is not None
+
+
+def duplicate_request(s: Session, request_id: int) -> int:
+    src = get_request(s, request_id)
+    dup = Request(
+        datetime_of_request=datetime.now().replace(microsecond=0, second=0),
+        lpo=src.lpo,
+        workcenter=src.workcenter,
+        requestor_name=src.requestor_name,
+        hazmat_location=src.hazmat_location,
+        source_mip_id=src.source_mip_id,
+        source_mrc_id=src.source_mrc_id,
+    )
+    s.add(dup)
+    s.flush()
+    for line in src.lines:
+        s.add(
+            RequestLine(
+                request_id=dup.id,
+                sort_order=line.sort_order,
+                hazmat_item_id=line.hazmat_item_id,
+                spmig_code=line.spmig_code,
+                nomenclature=line.nomenclature,
+                niin=line.niin,
+                qty=line.qty,
+            )
+        )
+    return dup.id
+
+
+def delete_request(s: Session, request_id: int) -> None:
+    r = s.get(Request, request_id)
+    if r:
+        s.delete(r)
+
+
+def reopen_request(s: Session, request_id: int) -> None:
+    """Clear finalized_at so the request is editable again. The prior PDF
+    path is left in place until the next finalize overwrites it."""
+    r = get_request(s, request_id)
+    r.finalized_at = None
+
+
+def pdf_path(s: Session, request_id: int) -> str | None:
+    r = get_request(s, request_id)
+    return r.pdf_path if r.pdf_path and Path(r.pdf_path).exists() else None
+
+
+def print_request(s: Session, request_id: int, copies: int = 1) -> str:
+    """Send the request's PDF to CUPS, finalizing first if needed.
+    Returns the lp job id. Raises FinalizeError / printer_service.PrintError."""
+    r = get_request(s, request_id)
+    if not (r.pdf_path and Path(r.pdf_path).exists()):
+        finalize(s, request_id)  # auto-finalize so one click is enough
+        r = get_request(s, request_id)
+    if not (r.pdf_path and Path(r.pdf_path).exists()):
+        raise FinalizeError("No PDF available to print.")
+    return printer_service.print_pdf(Path(r.pdf_path), copies=max(1, copies))

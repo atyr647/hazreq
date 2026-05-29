@@ -31,10 +31,10 @@ SEARCH_DEBOUNCE_MS = 150
 
 
 class BuilderApp(ttk.Frame):
-    def __init__(self, master: tk.Tk, request_id: int) -> None:
+    def __init__(self, master, request_id: int, shell=None) -> None:
         super().__init__(master, padding=8)
         self.request_id = request_id
-        self.pack(fill="both", expand=True)
+        self.shell = shell
 
         # id maps for the result lists (index -> db id)
         self._mrc_ids: list[int] = []
@@ -43,11 +43,18 @@ class BuilderApp(ttk.Frame):
         self._mrc_after: str | None = None
         self._item_after: str | None = None
 
+        # Finalized requests open read-only (mirrors the web view/edit split).
+        with repo.session_scope() as s:
+            self.read_only = repo.is_finalized(s, request_id)
+
+        self._editable_widgets: list[tk.Widget] = []
         self._build_header()
         self._build_body()
         self._build_footer()
         self._load_header()
         self.reload_lines()
+        if self.read_only:
+            self._apply_read_only()
 
     # ---- header --------------------------------------------------------
 
@@ -71,6 +78,7 @@ class BuilderApp(ttk.Frame):
             # Autosave per field on focus-out — mirrors the web PATCH-on-blur.
             ent.bind("<FocusOut>", lambda _e, k=key: self._save_header_field(k))
             self.hdr_vars[key] = var
+            self._editable_widgets.append(ent)
             hdr.columnconfigure(col, weight=1)
         self.hdr_vars["datetime_of_request"].set(
             datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -141,11 +149,16 @@ class BuilderApp(ttk.Frame):
 
         btns = ttk.Frame(right)
         btns.pack(fill="x", pady=(6, 0))
-        ttk.Button(btns, text="Manual line…", command=self._add_manual).pack(side="left")
-        ttk.Button(btns, text="Swap…", command=self._swap_selected).pack(side="left", padx=4)
-        ttk.Button(btns, text="Move ↑", command=lambda: self._move("up")).pack(side="left")
-        ttk.Button(btns, text="Move ↓", command=lambda: self._move("down")).pack(side="left", padx=4)
-        ttk.Button(btns, text="Remove", command=self._remove_selected).pack(side="left")
+        for text, cmd in [
+            ("Manual line…", self._add_manual),
+            ("Swap…", self._swap_selected),
+            ("Move ↑", lambda: self._move("up")),
+            ("Move ↓", lambda: self._move("down")),
+            ("Remove", self._remove_selected),
+        ]:
+            b = ttk.Button(btns, text=text, command=cmd)
+            b.pack(side="left", padx=(0, 4))
+            self._editable_widgets.append(b)
 
     def _make_search_tab(self, nb, tab_title, action_label, on_search, on_action):
         tab = ttk.Frame(nb, padding=6)
@@ -154,10 +167,13 @@ class BuilderApp(ttk.Frame):
         ent = ttk.Entry(tab, textvariable=var)
         ent.pack(fill="x")
         ent.bind("<KeyRelease>", lambda _e: on_search(var.get()))
+        self._editable_widgets.append(ent)
         listbox = tk.Listbox(tab, activestyle="dotbox")
         listbox.pack(fill="both", expand=True, pady=6)
         listbox.bind("<Double-1>", lambda _e: on_action())
-        ttk.Button(tab, text=action_label, command=on_action).pack(anchor="e")
+        action_btn = ttk.Button(tab, text=action_label, command=on_action)
+        action_btn.pack(anchor="e")
+        self._editable_widgets.append(action_btn)
         return listbox
 
     # ---- search handlers (debounced) -----------------------------------
@@ -311,6 +327,8 @@ class BuilderApp(ttk.Frame):
     # ---- inline qty editing --------------------------------------------
 
     def _begin_qty_edit(self, event: tk.Event) -> None:
+        if self.read_only:
+            return
         if self.tree.identify_region(event.x, event.y) != "cell":
             return
         if self.tree.identify_column(event.x) != "#4":  # qty is the 4th column
@@ -371,11 +389,71 @@ class BuilderApp(ttk.Frame):
         foot.pack(fill="x")
         self.status = ttk.Label(foot, text="Ready.", anchor="w")
         self.status.pack(side="left", fill="x", expand=True)
+        # Draft controls (right side). Read-only requests get a different
+        # set, built in _apply_read_only.
         self.finalize_btn = ttk.Button(foot, text="Finalize → PDF", command=self._finalize)
         self.finalize_btn.pack(side="right")
+        self._footer = foot
 
     def set_status(self, text: str, error: bool = False) -> None:
         self.status.configure(text=text, foreground="#b00020" if error else "")
+
+    # ---- read-only (finalized) mode ------------------------------------
+
+    def _apply_read_only(self) -> None:
+        """Disable all editing affordances and swap the footer to view
+        actions: reopen, open PDF, print. Mirrors the web view/edit split."""
+        for w in self._editable_widgets:
+            with contextlib.suppress(tk.TclError):
+                w.configure(state="disabled")
+        self.finalize_btn.destroy()
+        ttk.Button(self._footer, text="Print", command=self._print).pack(side="right")
+        ttk.Button(self._footer, text="Open PDF", command=self._open_pdf).pack(
+            side="right", padx=4
+        )
+        ttk.Button(
+            self._footer, text="Reopen for editing", command=self._reopen
+        ).pack(side="right")
+        self.set_status("Finalized — read-only. Reopen to edit.")
+
+    def _reopen(self) -> None:
+        try:
+            with repo.session_scope() as s:
+                repo.reopen_request(s, self.request_id)
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"Reopen failed: {e}", error=True)
+            return
+        # Rebuild the screen in editable mode via the shell, if present.
+        if self.shell is not None:
+            self.shell.open_request(self.request_id)
+        else:
+            self.read_only = False
+            self.set_status("Reopened for editing — reload the window to edit.")
+
+    def _open_pdf(self) -> None:
+        from app.ui.history import _open_path
+
+        try:
+            with repo.session_scope() as s:
+                path = repo.pdf_path(s, self.request_id)
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"Lookup failed: {e}", error=True)
+            return
+        if not path:
+            self.set_status("No PDF on file.", error=True)
+            return
+        _open_path(path)
+        self.set_status(f"Opened {path}")
+
+    def _print(self) -> None:
+        try:
+            with repo.session_scope() as s:
+                job = repo.print_request(s, self.request_id)
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"Print failed: {e}", error=True)
+            messagebox.showerror("Print failed", str(e), parent=self)
+            return
+        self.set_status(f"Sent to printer ({job}).")
 
     def _finalize(self) -> None:
         # PDF generation can take seconds (LibreOffice). Run off the UI
@@ -400,7 +478,18 @@ class BuilderApp(ttk.Frame):
     def _finalize_done(self, path) -> None:
         self.finalize_btn.configure(state="normal")
         self.set_status(f"Finalized. PDF: {path}")
-        messagebox.showinfo("Finalized", f"PDF written to:\n{path}")
+        if self.shell is not None:
+            if messagebox.askyesno(
+                "Finalized",
+                f"PDF written to:\n{path}\n\nOpen it now?",
+            ):
+                from app.ui.history import _open_path
+
+                if path:
+                    _open_path(str(path))
+            self.shell.show_history()
+        else:
+            messagebox.showinfo("Finalized", f"PDF written to:\n{path}")
 
     def _finalize_failed(self, msg: str) -> None:
         self.finalize_btn.configure(state="normal")
@@ -475,10 +564,12 @@ class _SwapDialog(tk.Toplevel):
 
 
 def run(request_id: int) -> None:
+    """Open just the builder on one request (no shell) — handy for testing
+    a single screen in isolation."""
     root = tk.Tk()
-    root.title("hazreq — new request (Tk prototype)")
+    root.title("hazreq — request builder")
     root.geometry("1100x720")
     with contextlib.suppress(tk.TclError):
         ttk.Style().theme_use("clam")  # cleaner than the default motif look
-    BuilderApp(root, request_id)
+    BuilderApp(root, request_id).pack(fill="both", expand=True)
     root.mainloop()

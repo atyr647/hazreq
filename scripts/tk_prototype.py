@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch the native Tk new-request builder (prototype).
+"""Launch the native Tk app.
 
     PYTHONPATH=. python scripts/tk_prototype.py
 
@@ -11,7 +11,7 @@ What it does, in order:
      the current "migrate on every launch").
   2. Seeds a small sample catalog if the catalog is empty, so there is
      something to search. No-op once real data exists.
-  3. Creates a fresh draft request and opens the Tk window on it.
+  3. Opens the app shell (History + New Request).
 
 Requires Tk (python3-tk / python3-tkinter on the host) and a display.
 
@@ -78,12 +78,9 @@ def main() -> int:
         )
         return 1
 
-    from app.ui import builder, repo
+    from app.ui import shell
 
-    with repo.session_scope() as s:
-        request_id = repo.create_draft(s)
-
-    builder.run(request_id)
+    shell.run()
     return 0
 
 
