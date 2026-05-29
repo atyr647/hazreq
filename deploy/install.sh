@@ -8,10 +8,12 @@ DATA_DIR="${DATA_DIR:-/var/lib/hazreq}"
 REPO_SRC="${REPO_SRC:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 echo "==> Installing apt packages"
+# PDF generation uses the pure-Python "overlay" backend (default), so
+# LibreOffice is no longer required. Install it (libreoffice-core
+# libreoffice-writer) only if you intend to set HAZREQ_PDF_BACKEND=docx.
 apt-get update
 apt-get install -y --no-install-recommends \
   python3 python3-venv python3-pip \
-  libreoffice-core libreoffice-writer \
   avahi-daemon sqlite3
 
 echo "==> Creating system user '${APP_USER}'"
@@ -28,12 +30,11 @@ echo "==> Creating venv and installing deps"
 python3 -m venv "${APP_HOME}/.venv"
 "${APP_HOME}/.venv/bin/pip" install --upgrade pip
 "${APP_HOME}/.venv/bin/pip" install -e "${APP_HOME}"
-"${APP_HOME}/.venv/bin/pip" install unoserver
 
 echo "==> Setting up data directories"
+# The overlay backend renders onto the blank chit shipped at the repo root
+# (copied to ${APP_HOME} by the rsync above) — no docx template needed.
 mkdir -p "${DATA_DIR}"/{templates,pdfs,backups}
-cp "${REPO_SRC}/data/templates/hazmat_chit.docx" "${DATA_DIR}/templates/" 2>/dev/null || \
-  echo "  (no template found in repo — generate with scripts/prepare_template.py)"
 chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}" "${APP_HOME}"
 
 echo "==> Running migrations"
@@ -44,9 +45,7 @@ sudo -u "${APP_USER}" \
 
 echo "==> Installing systemd units"
 install -m 0644 "${REPO_SRC}/deploy/hazreq.service" /etc/systemd/system/
-install -m 0644 "${REPO_SRC}/deploy/hazreq-unoserver.service" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now hazreq-unoserver.service
 systemctl enable --now hazreq.service
 
 echo "==> Installing Avahi mDNS service"
@@ -66,5 +65,4 @@ echo "  http://hazreq.local:8000   (LAN, via mDNS)"
 echo
 echo "Useful commands:"
 echo "  systemctl status hazreq            # web app"
-echo "  systemctl status hazreq-unoserver  # PDF converter"
 echo "  journalctl -u hazreq -f            # tail logs"

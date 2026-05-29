@@ -56,7 +56,7 @@ class Settings:
             unoserver_host=os.environ.get("HAZREQ_UNOSERVER_HOST", "127.0.0.1"),
             unoserver_port=int(os.environ.get("HAZREQ_UNOSERVER_PORT", "2003")),
             persist_pdfs=os.environ.get("HAZREQ_PERSIST_PDFS", "1") != "0",
-            pdf_backend=os.environ.get("HAZREQ_PDF_BACKEND", "docx").lower(),
+            pdf_backend=os.environ.get("HAZREQ_PDF_BACKEND", "overlay").lower(),
             fillable_pdf_path=fillable,
             overlay_pdf_path=overlay,
             printer=(os.environ.get("HAZREQ_PRINTER") or None),

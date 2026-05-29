@@ -12,7 +12,7 @@ def test_health_reports_backend(client):
     assert resp.status_code == 200
     j = resp.json()
     assert j["ok"] is True
-    assert j["pdf_backend"] in ("docx", "fillable_pdf")
+    assert j["pdf_backend"] in ("overlay", "docx", "fillable_pdf")
     assert isinstance(j["printing"], bool)
 
 

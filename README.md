@@ -42,7 +42,7 @@ A single ~145 MB AppImage that bundles **everything** needed to run on a Pi 400 
 
 **Zero systemd**: the bundle uses Void's webkit2gtk which is built against `elogind` (a standalone fork of systemd-logind) and `eudev` (Gentoo's standalone udev), not systemd. No `libsystemd.so.0` anywhere in the AppImage.
 
-Host deps on the Pi: only `libreoffice` for the docx→PDF conversion (`sudo xbps-install -S libreoffice`). Everything else is bundled.
+Host deps on the Pi: **none for PDF** — the default `overlay` backend is pure Python and the blank chit is bundled. (Install `libreoffice` only if you set `HAZREQ_PDF_BACKEND=docx`.) Everything else is bundled.
 
 The build is fully cross-compilable from x86_64 — `deploy/build_tauri.sh` for the basic AppImage (host webkit), or `deploy/build_tauri_void.sh` to roll the fully-bundled variant by walking Void's xbps dep tree and assembling the AppDir manually.
 
@@ -53,13 +53,13 @@ The build is fully cross-compilable from x86_64 — `deploy/build_tauri.sh` for 
 ./dist/hazreq-aarch64.AppImage    # ships in dist/, ~50 MB
 ```
 
-The AppImage bundles Python 3.11 + every Python dep + the app source. It does **not** bundle LibreOffice or CUPS — those are expected on the host (`apt install libreoffice-core libreoffice-writer cups-client`). If you switch `HAZREQ_PDF_BACKEND=fillable_pdf` once a fillable form is provided, LibreOffice becomes optional.
+The AppImage bundles Python 3.11 + every Python dep + the app source + the blank chit. PDF generation uses the pure-Python `overlay` backend by default, so **no LibreOffice is needed**. Only CUPS is expected on the host, and only for printing (`apt install cups-client`). Set `HAZREQ_PDF_BACKEND=docx` if you specifically want LibreOffice conversion.
 
 On first launch the AppImage:
 
 - creates `~/.local/share/hazreq/` for the SQLite DB, generated PDFs, backups
 - runs Alembic migrations
-- generates the starter docx template if missing
+- (only under the `docx` backend) generates the starter docx template if missing
 - starts uvicorn on `127.0.0.1:8000` (auto-picks a free port if taken) and opens the UI
 
 Override anything via env vars (`HAZREQ_PORT`, `HAZREQ_HOST`, `HAZREQ_DATA_DIR`, etc.). If `HAZREQ_PORT` is unset, the launcher probes 8000–8009 for the first free port and falls back to a kernel-assigned one. By default the UI opens in a chromeless Chromium app window (`chromium --app=URL`); set `HAZREQ_APP_MODE=0` to open in a regular browser tab instead, or `HAZREQ_NO_BROWSER=1` to skip the auto-launch entirely. Build for the Pi 400 by running the script *on* the Pi (cross-compiling AppImages is doable but messier — qemu-static + binfmt).
@@ -70,7 +70,7 @@ Override anything via env vars (`HAZREQ_PORT`, `HAZREQ_HOST`, `HAZREQ_DATA_DIR`,
 sudo ./deploy/install.sh
 ```
 
-Installs LibreOffice (for PDF conversion), creates a `hazreq` user, copies the app to `/opt/hazreq`, sets up `/var/lib/hazreq` for data, registers two systemd services (`hazreq` and `hazreq-unoserver`), advertises the app on mDNS (`hazreq.local:8000`), installs the system menu launcher, and sets up nightly SQLite backups.
+Creates a `hazreq` user, copies the app to `/opt/hazreq`, sets up `/var/lib/hazreq` for data, registers the `hazreq` systemd service (PDF via the bundled pure-Python `overlay` backend — no LibreOffice, no `unoserver` service), advertises the app on mDNS (`hazreq.local:8000`), installs the system menu launcher, and sets up nightly SQLite backups.
 
 ## Configuration
 
@@ -86,7 +86,7 @@ All paths are env-driven (see `app/config.py`):
 | `HAZREQ_UNOSERVER_HOST`     | `127.0.0.1`                       | unoserver host                |
 | `HAZREQ_UNOSERVER_PORT`     | `2003`                            | unoserver port                |
 | `HAZREQ_PERSIST_PDFS`       | `1`                               | Set to `0` for ephemeral PDFs |
-| `HAZREQ_PDF_BACKEND`        | `docx`                            | `overlay` \| `docx` \| `fillable_pdf` |
+| `HAZREQ_PDF_BACKEND`        | `overlay`                         | `overlay` \| `docx` \| `fillable_pdf` |
 | `HAZREQ_OVERLAY_PDF_PATH`   | `./Hazmat Request Blank.pdf`      | Blank chit for the `overlay` backend |
 
 A future web port can flip `HAZREQ_DB_URL` to `:memory:` and
@@ -101,16 +101,16 @@ A future web port can flip `HAZREQ_DB_URL` to `:memory:` and
 - `request_line` snapshots SPMIG / nomenclature / NIIN at line creation —
   catalog edits never alter past requests.
 - Three PDF backends, picked with `HAZREQ_PDF_BACKEND`:
-  - `overlay` (recommended on the Pi) — pure-Python. Draws the request's
-    values onto the static blank chit (`Hazmat Request Blank.pdf`) with
-    reportlab and merges with pypdf. **No LibreOffice**; a render is ~20 ms
-    vs. LibreOffice's multi-second cold start. Coordinates are measured once
-    from the blank form in `app/services/pdf.py`; re-measure if the master
-    form is re-laid-out. Overflows onto extra copies of the line-item page,
-    7 rows each, with the signature page kept last.
-  - `docx` (default) — fill the docxtpl template, then convert to PDF via
-    `unoserver` (warm headless LibreOffice over a local socket) first,
-    falling back to spawning `soffice --headless` on demand.
+  - `overlay` (**default**, recommended on the Pi) — pure-Python. Draws the
+    request's values onto the static blank chit (`Hazmat Request Blank.pdf`)
+    with reportlab and merges with pypdf. **No LibreOffice**; a render is
+    ~20 ms vs. LibreOffice's multi-second cold start. Coordinates are
+    measured once from the blank form in `app/services/pdf.py`; re-measure
+    if the master form is re-laid-out. Overflows onto extra copies of the
+    line-item page, 7 rows each, with the signature page kept last.
+  - `docx` — fill the docxtpl template, then convert to PDF via `unoserver`
+    (warm headless LibreOffice over a local socket) first, falling back to
+    spawning `soffice --headless` on demand. Requires LibreOffice on the host.
   - `fillable_pdf` — fill an AcroForm PDF directly via pypdf (needs a
     fillable source form named per the convention in `app/services/pdf.py`).
 

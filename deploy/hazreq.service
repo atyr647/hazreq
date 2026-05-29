@@ -1,7 +1,6 @@
 [Unit]
 Description=hazreq — hazmat request app
-After=network.target hazreq-unoserver.service
-Wants=hazreq-unoserver.service
+After=network.target
 
 [Service]
 Type=simple
@@ -10,9 +9,12 @@ Group=hazreq
 WorkingDirectory=/opt/hazreq
 Environment="HAZREQ_DATA_DIR=/var/lib/hazreq"
 Environment="HAZREQ_DB_URL=sqlite:////var/lib/hazreq/hazreq.db"
-Environment="HAZREQ_TEMPLATE_PATH=/var/lib/hazreq/templates/hazmat_chit.docx"
 Environment="HAZREQ_PDF_DIR=/var/lib/hazreq/pdfs"
 Environment="HAZREQ_BACKUP_DIR=/var/lib/hazreq/backups"
+# PDF: pure-Python overlay backend (no LibreOffice). The blank chit ships
+# at /opt/hazreq. Set HAZREQ_PDF_BACKEND=docx to fall back to LibreOffice.
+Environment="HAZREQ_PDF_BACKEND=overlay"
+Environment="HAZREQ_OVERLAY_PDF_PATH=/opt/hazreq/Hazmat Request Blank.pdf"
 ExecStart=/opt/hazreq/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 Restart=on-failure
 RestartSec=3

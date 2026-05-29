@@ -13,7 +13,7 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 |---|---|
 | Stack | Python 3.11 + FastAPI + SQLAlchemy 2.x + Alembic + SQLite (WAL) |
 | UI | Server-rendered Jinja2 + HTMX + Alpine.js + Tailwind (standalone CLI build) |
-| PDF | `docxtpl` fills `.docx` template, `unoserver` (warm headless LibreOffice) converts to PDF |
+| PDF | Default: pure-Python `overlay` draws values onto the blank chit (reportlab + pypdf, no LibreOffice). Optional `docx` backend: `docxtpl` + `unoserver`/LibreOffice |
 | Process | Single `uvicorn` worker; `unoserver` as separate systemd unit |
 | Deploy | Pi 400, multipurpose desktop (no kiosk); browser shortcut + LAN access via mDNS |
 | Auth | None (LAN trust model, 100% offline) |
@@ -153,8 +153,8 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 
 | # | Task | Status | Notes |
 |---|---|---|---|
-| 8.1 | `hazreq.service` systemd unit (uvicorn) | Done | `After=hazreq-unoserver.service` |
-| 8.2 | `hazreq-unoserver.service` systemd unit | Done | Always-warm; consider socket-activation if RAM tight |
+| 8.1 | `hazreq.service` systemd unit (uvicorn) | Done | No longer depends on unoserver (see 11.5a — overlay backend is the default; LibreOffice optional) |
+| 8.2 | `hazreq-unoserver.service` systemd unit | Removed | Dropped when the pure-Python `overlay` backend became the default (11.5a). Re-add only if running `HAZREQ_PDF_BACKEND=docx` |
 | 8.3 | `/etc/avahi/services/hazreq.service` mDNS advertisement | Done | `hazreq.local:8000` from phones |
 | 8.4 | `hazreq.desktop` launcher | Done | Installed system-wide to `/usr/share/applications/`; opens default browser to localhost |
 | 8.5 | Nightly backup cron: `sqlite3 .backup`, prune to last 14 | Done |  |
@@ -238,7 +238,7 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 | 13.1 | `deploy/build_appimage.sh` build pipeline | Done | Uses `python-appimage` for the bundled Python 3.11 + `appimagetool` for the final image; auto-detects host arch (x86_64 / aarch64 / armhf) |
 | 13.2 | `AppRun` launcher with first-run setup | Done | Resolves `~/.local/share/hazreq/` for writable state, runs Alembic migrations, generates docx template if missing, optionally opens browser |
 | 13.3 | Desktop entry + icon | Done | `deploy/appimage/hazreq.desktop` + 256×256 PNG icon (also mirrored to `app/static/icon.png`) |
-| 13.4 | LibreOffice / CUPS NOT bundled | By design | Expected on host (`apt install libreoffice-core libreoffice-writer cups-client`); becomes unnecessary once `HAZREQ_PDF_BACKEND=fillable_pdf` is active |
+| 13.4 | LibreOffice / CUPS NOT bundled | By design | CUPS on host for printing (`apt install cups-client`). LibreOffice no longer needed — the default `overlay` backend (11.5a) is pure Python; install LibreOffice only for `HAZREQ_PDF_BACKEND=docx` |
 | 13.5 | Build for Pi 400 must run on aarch64 | Documented | Cross-compile from x86_64 needs qemu-static + binfmt; simplest is to build *on* the Pi |
 
 ---

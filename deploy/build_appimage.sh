@@ -2,9 +2,10 @@
 # Build a hazreq AppImage.
 #
 # Bundles Python 3.11 + all Python deps + the app code into a single
-# self-contained executable. LibreOffice and CUPS are NOT bundled —
-# they're expected on the host (or skipped entirely if you switch
-# HAZREQ_PDF_BACKEND=fillable_pdf).
+# self-contained executable. PDF generation uses the pure-Python overlay
+# backend by default (the blank chit is bundled), so LibreOffice is NOT
+# needed. CUPS is still expected on the host for printing. Set
+# HAZREQ_PDF_BACKEND=docx if you specifically want LibreOffice conversion.
 #
 # By default builds for the host architecture. To cross-build for the
 # Pi 400 from an x86_64 box, set HAZREQ_BUILD_ARCH=aarch64; this needs
@@ -113,6 +114,7 @@ rsync -a --delete \
   "$REPO_ROOT/alembic.ini" "$REPO_ROOT/pyproject.toml" \
   "$REPO_ROOT/README.md" "$REPO_ROOT/ROADMAP.md" \
   "$REPO_ROOT/BLANK NEW HAZMAT ISSUE CHIT 2.0.docx" \
+  "$REPO_ROOT/Hazmat Request Blank.pdf" \
   "$APP_DEST/"
 
 # ----- 5. Write the launcher (AppRun) ------------------------------
@@ -148,6 +150,10 @@ export HAZREQ_DB_URL="${HAZREQ_DB_URL:-sqlite:///$DATA_DIR/hazreq.db}"
 export HAZREQ_TEMPLATE_PATH="${HAZREQ_TEMPLATE_PATH:-$DATA_DIR/templates/hazmat_chit.docx}"
 export HAZREQ_PDF_DIR="${HAZREQ_PDF_DIR:-$DATA_DIR/pdfs}"
 export HAZREQ_BACKUP_DIR="${HAZREQ_BACKUP_DIR:-$DATA_DIR/backups}"
+# Default to the pure-Python overlay backend; the blank chit is bundled
+# alongside the app source so no LibreOffice is required.
+export HAZREQ_PDF_BACKEND="${HAZREQ_PDF_BACKEND:-overlay}"
+export HAZREQ_OVERLAY_PDF_PATH="${HAZREQ_OVERLAY_PDF_PATH:-$HERE/opt/hazreq/Hazmat Request Blank.pdf}"
 
 HOST="${HAZREQ_HOST:-127.0.0.1}"
 
@@ -175,9 +181,10 @@ fi
 cd "$HERE/opt/hazreq"
 export PYTHONPATH="$HERE/opt/hazreq:${PYTHONPATH:-}"
 
-# First-run setup: migrations + docx template.
+# First-run setup: migrations always; docx template only when the docx
+# backend is selected (the default overlay backend doesn't use it).
 "$PY" -m alembic -c "$HERE/opt/hazreq/alembic.ini" upgrade head >/dev/null
-if [ ! -f "$HAZREQ_TEMPLATE_PATH" ]; then
+if [ "$HAZREQ_PDF_BACKEND" = "docx" ] && [ ! -f "$HAZREQ_TEMPLATE_PATH" ]; then
   echo "Generating starter docx template at $HAZREQ_TEMPLATE_PATH"
   "$PY" "$HERE/opt/hazreq/scripts/prepare_template.py"
 fi

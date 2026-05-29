@@ -13,6 +13,8 @@
       {% if health.pdf_backend == 'docx' %}
         <tr><td>unoserver</td><td colspan="1">127.0.0.1</td><td><span class="badge {{ 'final' if health.unoserver_alive else 'danger' }}">{{ 'RUNNING' if health.unoserver_alive else 'OFFLINE (will fall back to soffice)' }}</span></td></tr>
         <tr><td>docx template</td><td>{{ health.template_present and 'Present' or 'Missing' }}</td><td><span class="badge {{ 'final' if health.template_present else 'danger' }}">{{ 'OK' if health.template_present else 'PREP REQUIRED' }}</span></td></tr>
+      {% elif health.pdf_backend == 'overlay' %}
+        <tr><td>Overlay form</td><td>{{ health.overlay_present and 'Present' or 'Missing' }}</td><td><span class="badge {{ 'final' if health.overlay_present else 'danger' }}">{{ 'OK (no LibreOffice needed)' if health.overlay_present else 'BLANK PDF MISSING' }}</span></td></tr>
       {% else %}
         <tr><td>Fillable PDF</td><td>{{ health.fillable_pdf_present and 'Present' or 'Missing' }}</td><td><span class="badge {{ 'final' if health.fillable_pdf_present else 'danger' }}">{{ 'OK' if health.fillable_pdf_present else 'NOT INSTALLED' }}</span></td></tr>
       {% endif %}

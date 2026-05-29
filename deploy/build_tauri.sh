@@ -7,7 +7,7 @@
 #     from dist/hazreq-<arch>.AppImage so we don't duplicate the build)
 #
 # Host runtime deps (NOT bundled — must be on the Pi):
-#   webkit2gtk, gtk+3, libreoffice-writer
+#   webkit2gtk, gtk+3   (libreoffice-writer only if HAZREQ_PDF_BACKEND=docx)
 #
 # Cross-build for the Pi 400 from x86_64 hardware is NOT supported here.
 # Tauri's Rust code links against webkit2gtk-dev and gtk-3-dev, which
@@ -149,5 +149,5 @@ ARCH="${APPIMG_ARCH}" "$TOOL" --no-appstream "$APPDIR" "$OUT"
 
 echo
 echo "==> Built $(du -h "$OUT" | cut -f1) AppImage at: $OUT"
-echo "    Pi host deps: sudo xbps-install -S webkit2gtk gtk+3 libreoffice"
+echo "    Pi host deps: sudo xbps-install -S webkit2gtk gtk+3   # libreoffice only if HAZREQ_PDF_BACKEND=docx"
 echo "    Run:          $OUT"

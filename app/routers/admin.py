@@ -49,6 +49,7 @@ def admin_home(request: Request, db: Session = Depends(get_session)):
         "unoserver_alive": _unoserver_alive(),
         "template_present": settings.template_path.exists(),
         "pdf_backend": settings.pdf_backend,
+        "overlay_present": settings.overlay_pdf_path.exists(),
         "fillable_pdf_present": (
             settings.fillable_pdf_path is not None and settings.fillable_pdf_path.exists()
         ),
