@@ -501,46 +501,184 @@ def _paint_seal(c, wm, top: float, bottom: float, *, clear: bool) -> None:
     c.restoreState()
 
 
-def _page1_bytes(snap: RequestSnapshot, lines: list[LineSnapshot], wm) -> bytes:
-    """Page 1: the form's header values overlaid, then the dynamic table +
-    footer drawn over the cleared lower area of the blank-form background."""
-    from reportlab.pdfgen import canvas
-
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
-    # Header values sit on each label's baseline (lifted by the font descent).
-    c.setFont(_overlay_font(), _HEADER_SIZE)
-    for attr, (vx, baseline) in _OVERLAY_HEADER.items():
-        val = getattr(snap, attr, "") or ""
-        if val:
-            c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
-    _paint_seal(c, wm, _TABLE_TOP, _CLEAR_BOTTOM, clear=True)
-    bottom = _draw_rows(c, _TABLE_TOP, lines)
-    _draw_footer(c, bottom)
-    c.showPage()
-    c.save()
-    return buf.getvalue()
+# ---- reconstructed page-2 signature blocks (so they flow after the table) --
+_H_ISSUING = 51.5
+_H_RETURNING = 51.7
+_H_CUSTODIAN = 77.3
+_H_NOTES = 127.8
+_SIG_X = 81.8
+_LINK_BLUE = (0.0, 0.0, 0.85)
 
 
-def _continuation_bytes(lines: list[LineSnapshot], wm) -> bytes:
-    """A continuation page: purely the item-line table — seal, a column
-    header near the top, the rows, then the footer. No form header."""
-    from reportlab.pdfgen import canvas
-
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
-    _paint_seal(c, wm, _CONT_TABLE_TOP, _BOTTOM_LIMIT, clear=False)
-    rows_top = _draw_colheader(c, _CONT_TABLE_TOP)
-    bottom = _draw_rows(c, rows_top, lines)
-    _draw_footer(c, bottom)
-    c.showPage()
-    c.save()
-    return buf.getvalue()
+def _box(c, top: float, bottom: float, rules=()) -> None:
+    """Outer border for [top, bottom] plus extra horizontal rules at the
+    given top-origin offsets from `top`."""
+    c.setLineWidth(_GRID_LINE_W)
+    for yy in (PAGE_H - top, PAGE_H - bottom):
+        c.line(_TABLE_X0, yy, _TABLE_X1, yy)
+    for x in (_TABLE_X0, _TABLE_X1):
+        c.line(x, PAGE_H - top, x, PAGE_H - bottom)
+    for off in rules:
+        c.line(_TABLE_X0, PAGE_H - (top + off), _TABLE_X1, PAGE_H - (top + off))
 
 
-def _rows_per_page(table_top: float) -> int:
-    """How many rows fit above the footer when the table starts at table_top."""
-    return max(1, int((_BOTTOM_LIMIT - _FOOTER_H - table_top) // _ROW_H))
+def _sig_rule(c, x0: float, x1: float, y_off: float, top: float) -> None:
+    c.setLineWidth(_GRID_LINE_W)
+    yy = PAGE_H - (top + y_off) + 1.0
+    c.line(x0, yy, x1, yy)
+
+
+def _blk_issuing(c, top: float) -> None:
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    reg, bold = _overlay_font(), _overlay_font_bold()
+    _box(c, top, top + _H_ISSUING)
+    c.setFont(bold, _HEADER_SIZE)
+    c.drawString(_SIG_X, PAGE_H - (top + 13.5), "HAZMAT  ISSUING PERSONNEL:")
+    c.setFont(reg, _HEADER_SIZE)
+    lbl = "DIGITAL SIGNATURE:"
+    c.drawString(_SIG_X, PAGE_H - (top + 39.0), lbl)
+    _sig_rule(c, _SIG_X + stringWidth(lbl, reg, _HEADER_SIZE) + 6, 360.0, 39.0, top)
+
+
+def _blk_returning(c, top: float) -> None:
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    reg = _overlay_font()
+    _box(c, top, top + _H_RETURNING, rules=(25.7,))
+    c.setFont(reg, _HEADER_SIZE)
+    txt = "RETURNING HAZMAT"
+    cx = (_TABLE_X0 + _TABLE_X1) / 2 - stringWidth(txt, reg, _HEADER_SIZE) / 2
+    c.drawString(cx, PAGE_H - (top + 13.5), txt)
+    for x in (206.8, 360.1, 503.2):  # cell dividers in the date/time row
+        c.line(x, PAGE_H - (top + 25.7), x, PAGE_H - (top + _H_RETURNING))
+    c.drawString(_SIG_X, PAGE_H - (top + 39.2), "DATE RETURNED:")
+    c.drawString(212.1, PAGE_H - (top + 39.2), "TIME RETURNED:")
+
+
+def _blk_custodian(c, top: float) -> None:
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    reg, bold = _overlay_font(), _overlay_font_bold()
+    _box(c, top, top + _H_CUSTODIAN, rules=(51.6,))
+    c.setFont(bold, _HEADER_SIZE)
+    c.drawString(_SIG_X, PAGE_H - (top + 13.5), "HAZMAT CUSTODIAN RETURN :")
+    c.setFont(reg, _HEADER_SIZE)
+    lbl, sx = "SIGNATURE:", 267.0
+    c.drawString(sx, PAGE_H - (top + 39.1), lbl)
+    _sig_rule(c, sx + stringWidth(lbl, reg, _HEADER_SIZE) + 4, 540.0, 39.1, top)
+
+
+def _blk_notes(c, top: float) -> None:
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    bold = _overlay_font_bold()
+    _box(c, top, top + _H_NOTES)
+    c.setFont(bold, _HEADER_SIZE)
+    c.drawString(_SIG_X, PAGE_H - (top + 13.5), "NOTE:")
+    bullets = [
+        "* ALL requests shall be submitted at least 24HR in advance, and they are due at 1500 the day before.",
+        "* ALL hazardous materials must be turned in daily from 1330-1530.",
+        "* ALL HAZWASTE needs to be turned-in to S-3 for inspection prior to disposal.",
+    ]
+    for i, b in enumerate(bullets):
+        off = 39.1 + i * 25.5
+        c.drawString(_SIG_X + 8, PAGE_H - (top + off), b)
+        w = stringWidth(b, bold, _HEADER_SIZE)
+        c.setLineWidth(_GRID_LINE_W)
+        c.line(_SIG_X + 8, PAGE_H - (top + off) - 1.5, _SIG_X + 8 + w, PAGE_H - (top + off) - 1.5)
+    # DISTRO EMAIL line — addresses in blue, like the form's hyperlinks.
+    y = PAGE_H - (top + 115.3)
+    x = _SIG_X
+    c.setFont(bold, _HEADER_SIZE)
+    for text, blue in [
+        ("DISTRO EMAIL: *** ", False),
+        ("fs_nbu7_n43_s3@us.navy.mil", True),
+        (" / ", False),
+        ("fs_nbu7_n41_s1@us.navy.mil", True),
+        (" ***", False),
+    ]:
+        c.setFillColorRGB(*(_LINK_BLUE if blue else (0.0, 0.0, 0.0)))
+        c.drawString(x, y, text)
+        x += stringWidth(text, bold, _HEADER_SIZE)
+    c.setFillColorRGB(0.0, 0.0, 0.0)
+
+
+# ---- flowing document: header → table → signature blocks -------------------
+
+class _FlowDoc:
+    """Lays content top-to-bottom across pages. Page 1 overlays the blank
+    form (header + table region); later pages are clean generated pages. The
+    table and the signature blocks flow, so signatures roll onto a new page
+    and combine when the table is long."""
+
+    def __init__(self, wm, blank_bytes: bytes) -> None:
+        self.wm = wm
+        self.blank_bytes = blank_bytes
+        self.pages: list[dict] = []
+        self.y = 0.0
+        self._begin(first=True)
+
+    def _begin(self, first: bool) -> None:
+        from reportlab.pdfgen import canvas
+
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
+        self.pages.append({"buf": buf, "c": c, "first": first})
+        if first:
+            _paint_seal(c, self.wm, _TABLE_TOP, _CLEAR_BOTTOM, clear=True)
+            self.y = _TABLE_TOP
+        else:
+            if self.wm is not None:
+                x, wy, ww, wh = _WM_RECT
+                c.drawImage(self.wm, x, wy, width=ww, height=wh, mask="auto")
+            self.y = _CONT_TABLE_TOP
+
+    @property
+    def c(self):
+        return self.pages[-1]["c"]
+
+    @property
+    def _is_first(self) -> bool:
+        return self.pages[-1]["first"]
+
+    def table(self, lines: list[LineSnapshot]) -> None:
+        i, n = 0, len(lines)
+        while i < n:
+            if not self._is_first and self.y <= _CONT_TABLE_TOP + 0.1:
+                self.y = _draw_colheader(self.c, self.y)  # repeat header on new pages
+            k = int((_BOTTOM_LIMIT - self.y) // _ROW_H)
+            if k <= 0:
+                self._begin(first=False)
+                continue
+            chunk = lines[i : i + k]
+            self.y = _draw_rows(self.c, self.y, chunk)
+            i += len(chunk)
+            if i < n:
+                self._begin(first=False)
+
+    def block(self, draw_fn, height: float) -> None:
+        if self.y + height > _BOTTOM_LIMIT:
+            self._begin(first=False)
+        draw_fn(self.c, self.y)
+        self.y += height
+
+    def finalize(self) -> bytes:
+        from pypdf import PdfReader, PdfWriter
+
+        writer = PdfWriter()
+        for idx, p in enumerate(self.pages):
+            p["c"].showPage()
+            p["c"].save()
+            overlay = PdfReader(io.BytesIO(p["buf"].getvalue())).pages[0]
+            if idx == 0:
+                base = writer.add_page(PdfReader(io.BytesIO(self.blank_bytes)).pages[0])
+                base.merge_page(overlay)
+            else:
+                writer.add_page(overlay)
+        out = io.BytesIO()
+        writer.write(out)
+        return out.getvalue()
 
 
 def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
@@ -550,35 +688,29 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
             f"Overlay form not found at {src}. Set HAZREQ_OVERLAY_PDF_PATH to the blank chit PDF."
         )
     try:
-        from pypdf import PdfReader, PdfWriter
+        import pypdf  # noqa: F401
     except ImportError as e:  # pragma: no cover
         raise PdfRenderError("overlay backend needs pypdf") from e
 
     blank_bytes = Path(src).read_bytes()
-    n_form_pages = len(PdfReader(io.BytesIO(blank_bytes)).pages)
     wm = _watermark_image(blank_bytes)
+    doc = _FlowDoc(wm, blank_bytes)
 
-    rows = list(snap.lines)
-    cap1 = _rows_per_page(_TABLE_TOP)
-    cap_cont = _rows_per_page(_CONT_TABLE_TOP + _ROW_H)  # account for the column header
-    page1_rows, rest = rows[:cap1], rows[cap1:]
-    cont_chunks = [rest[i : i + cap_cont] for i in range(0, len(rest), cap_cont)]
+    # Page-1 header values, drawn above the table region on the form.
+    doc.c.setFont(_overlay_font(), _HEADER_SIZE)
+    for attr, (vx, baseline) in _OVERLAY_HEADER.items():
+        val = getattr(snap, attr, "") or ""
+        if val:
+            doc.c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
 
-    writer = PdfWriter()
-    # Page 1: overlay onto the blank-form background.
-    page = writer.add_page(PdfReader(io.BytesIO(blank_bytes)).pages[0])
-    page.merge_page(PdfReader(io.BytesIO(_page1_bytes(snap, page1_rows, wm))).pages[0])
-    # Continuation pages: clean item-line tables (footer on each).
-    for chunk in cont_chunks:
-        writer.add_page(PdfReader(io.BytesIO(_continuation_bytes(chunk, wm))).pages[0])
-    # Original signature / notes page appended last.
-    if n_form_pages > 1:
-        for p in PdfReader(io.BytesIO(blank_bytes)).pages[1:]:
-            writer.add_page(p)
-
-    out = io.BytesIO()
-    writer.write(out)
-    return out.getvalue()
+    # The table, then every signature section, all flowing top-to-bottom.
+    doc.table(list(snap.lines))
+    doc.block(_draw_footer, _FOOTER_H)       # ISSUING HAZMAT + requestor signature
+    doc.block(_blk_issuing, _H_ISSUING)
+    doc.block(_blk_returning, _H_RETURNING)
+    doc.block(_blk_custodian, _H_CUSTODIAN)
+    doc.block(_blk_notes, _H_NOTES)
+    return doc.finalize()
 
 
 # ============================================================
