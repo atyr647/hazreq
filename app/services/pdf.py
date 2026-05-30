@@ -23,6 +23,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -280,7 +281,7 @@ _CELL_PAD = 4.0
 
 # Lazily-registered overlay font: Carlito (metric-compatible with the
 # form's Calibri), falling back to Helvetica if the TTF isn't available.
-_FONT_LOCK = __import__("threading").Lock()
+_FONT_LOCK = threading.Lock()
 _FONT_NAME: str | None = None
 
 
