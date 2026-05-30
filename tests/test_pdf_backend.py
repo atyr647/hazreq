@@ -108,16 +108,19 @@ def test_overlay_backend_paginates_overflow(client):
     from app.services.pdf import LineSnapshot, RequestSnapshot, _render_overlay_pdf
 
     lines = [
-        LineSnapshot(spmig=f"S{i:04d}", nomenclature=f"ITEM {i}", niin=f"{i:09d}", qty="1")
-        for i in range(16)
+        LineSnapshot(spmig=f"S{i:04d}", nomenclature=f"ITEM-{i}", niin=f"{i:09d}", qty="1")
+        for i in range(40)
     ]
     snap = RequestSnapshot(
         id=2, name="N", workcenter="W", lpo="L", location="X",
         datetime="2026-05-29 09:00", lines=lines,
     )
     b = _render_overlay_pdf(snap)
-    # 16 lines / 7 per page = 3 filled pages + 1 signature page
-    assert _pdf_pages(b) == 4
+    # page 1 + continuation page(s) + the trailing signature page
+    assert _pdf_pages(b) >= 3
+    text = _pdf_text(b)
+    assert "ITEM-0" in text and "ITEM-39" in text  # first and last rows present
+    assert "RETURNING HAZMAT" in text              # signature page appended last
 
 
 @pytest.mark.skipif(

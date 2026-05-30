@@ -276,11 +276,19 @@ _COL_EDGES = (76.5, 206.8, 360.1, 503.2, 553.7)
 # pre-printed rows in this band are whited out and the seal re-painted
 # behind the new rows.
 _TABLE_X0, _TABLE_X1 = 76.5, 553.7
-_TABLE_TOP = 453.6        # top of the first data row (top-origin y)
+_TABLE_TOP = 453.6        # top of the first data row on page 1 (top-origin y)
 _ROW_H = 25.98            # matches the form's row pitch
-_ROWS_PER_PAGE = 7        # rows + footer fit between the column header and form bottom
-_CLEAR_BOTTOM = 712.7     # clear the whole lower area (rows + original footer)
+_CLEAR_BOTTOM = 745.0     # clear past the form's bottom border (712.7) — no stray line
+_BOTTOM_LIMIT = 740.0     # table + footer may extend down to here
 _GRID_LINE_W = 0.6
+
+# Continuation pages are pure item-line tables (no form header): a column
+# header near the top, then rows filling the page, then the footer.
+_CONT_TABLE_TOP = 110.0
+_COLHEADER_BASE = 13.3    # label baseline within the column-header row
+_COLHEADER = [            # x, text — matches the form (incl. its spelling)
+    (81.8, "SPMIG/SPIN"), (212.1, "NONMENCLATURE"), (365.4, "NIIN   7"), (508.7, "QTY"),
+]
 
 # Footer block ("ISSUING HAZMAT" + signature box), redrawn directly under
 # the table so it follows the rows. Offsets are top-origin from the footer
@@ -438,71 +446,101 @@ def _draw_footer(c, footer_top: float) -> None:
     c.line(sig_x, sy, 360.0, sy)
 
 
-def _overlay_page_bytes(
-    snap: RequestSnapshot, lines: list[LineSnapshot], *, with_header: bool, with_footer: bool, wm
-) -> bytes:
-    """One overlay page: optional header values, a dynamically-sized table
-    (exactly len(lines) rows), and — on the last page — the footer block
-    redrawn directly under the table so it follows the rows."""
-    from reportlab.pdfgen import canvas
-
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
-
-    if with_header:
-        # Each value sits on its label's baseline (top-origin y). The measured
-        # baseline is the glyph-box bottom, which includes the font descent,
-        # so lift the value by that much to land on the baseline.
-        c.setFont(_overlay_font(), _HEADER_SIZE)
-        for attr, (vx, baseline) in _OVERLAY_HEADER.items():
-            val = getattr(snap, attr, "") or ""
-            if val:
-                c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
-
-    # 1. Clear the whole lower area (pre-printed rows + the original footer),
-    #    so we can draw a dynamic table with the footer following it.
-    clear_y = PAGE_H - _CLEAR_BOTTOM
-    clear_h = _CLEAR_BOTTOM - _TABLE_TOP
-    box_x, box_w = _TABLE_X0 - 1.0, (_TABLE_X1 - _TABLE_X0) + 2.0
-    c.setFillColorRGB(1, 1, 1)
-    c.rect(box_x, clear_y, box_w, clear_h, fill=1, stroke=0)
-    c.setFillColorRGB(0, 0, 0)
-
-    # 2. Re-paint the seal, clipped to the cleared area, so it shows behind
-    #    the new content exactly as in the original (same image + placement).
-    if wm is not None:
-        c.saveState()
-        clip = c.beginPath()
-        clip.rect(box_x, clear_y, box_w, clear_h)
-        c.clipPath(clip, stroke=0, fill=0)
-        x, y, w, h = _WM_RECT
-        c.drawImage(wm, x, y, width=w, height=h, mask="auto")
-        c.restoreState()
-
-    # 3. Draw exactly N rows of grid + cell text.
+def _draw_rows(c, top_y: float, lines: list[LineSnapshot]) -> float:
+    """Draw an N-row grid + cell text starting at top_y; return its bottom."""
     n = len(lines)
-    table_bottom = _TABLE_TOP + n * _ROW_H
+    bottom = top_y + n * _ROW_H
     c.setLineWidth(_GRID_LINE_W)
-    for i in range(n + 1):  # horizontal rules
-        yy = PAGE_H - (_TABLE_TOP + i * _ROW_H)
+    for i in range(n + 1):
+        yy = PAGE_H - (top_y + i * _ROW_H)
         c.line(_TABLE_X0, yy, _TABLE_X1, yy)
-    for x in _COL_EDGES:  # column dividers
-        c.line(x, PAGE_H - _TABLE_TOP, x, PAGE_H - table_bottom)
+    for x in _COL_EDGES:
+        c.line(x, PAGE_H - top_y, x, PAGE_H - bottom)
     for i, line in enumerate(lines):
-        rt = _TABLE_TOP + i * _ROW_H
+        rt = top_y + i * _ROW_H
         rb = rt + _ROW_H
         _draw_cell(c, "spmig", line.spmig, rt, rb, center=False)
         _draw_cell(c, "nomenclature", line.nomenclature, rt, rb, center=False)
         _draw_cell(c, "niin", line.niin, rt, rb, center=True)
         _draw_cell(c, "qty", line.qty, rt, rb, center=True)
+    return bottom
 
-    # 4. Footer follows the table on the final page.
-    if with_footer:
-        _draw_footer(c, table_bottom)
 
+def _draw_colheader(c, top_y: float) -> float:
+    """Draw the table's column-header row at top_y; return its bottom."""
+    bold = _overlay_font_bold()
+    bottom = top_y + _ROW_H
+    c.setLineWidth(_GRID_LINE_W)
+    for yy in (PAGE_H - top_y, PAGE_H - bottom):
+        c.line(_TABLE_X0, yy, _TABLE_X1, yy)
+    for x in _COL_EDGES:
+        c.line(x, PAGE_H - top_y, x, PAGE_H - bottom)
+    c.setFont(bold, _HEADER_SIZE)
+    for x, txt in _COLHEADER:
+        c.drawString(x, PAGE_H - (top_y + _COLHEADER_BASE), txt)
+    return bottom
+
+
+def _paint_seal(c, wm, top: float, bottom: float, *, clear: bool) -> None:
+    """Re-paint the form seal in [top, bottom]. When `clear`, first white out
+    that band (used on page 1 to hide the form's pre-printed rows/footer)."""
+    box_x, box_w = _TABLE_X0 - 1.0, (_TABLE_X1 - _TABLE_X0) + 2.0
+    by, bh = PAGE_H - bottom, bottom - top
+    if clear:
+        c.setFillColorRGB(1, 1, 1)
+        c.rect(box_x, by, box_w, bh, fill=1, stroke=0)
+        c.setFillColorRGB(0, 0, 0)
+    if wm is None:
+        return
+    c.saveState()
+    clip = c.beginPath()
+    clip.rect(box_x, by, box_w, bh)
+    c.clipPath(clip, stroke=0, fill=0)
+    x, y, w, h = _WM_RECT
+    c.drawImage(wm, x, y, width=w, height=h, mask="auto")
+    c.restoreState()
+
+
+def _page1_bytes(snap: RequestSnapshot, lines: list[LineSnapshot], wm) -> bytes:
+    """Page 1: the form's header values overlaid, then the dynamic table +
+    footer drawn over the cleared lower area of the blank-form background."""
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
+    # Header values sit on each label's baseline (lifted by the font descent).
+    c.setFont(_overlay_font(), _HEADER_SIZE)
+    for attr, (vx, baseline) in _OVERLAY_HEADER.items():
+        val = getattr(snap, attr, "") or ""
+        if val:
+            c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
+    _paint_seal(c, wm, _TABLE_TOP, _CLEAR_BOTTOM, clear=True)
+    bottom = _draw_rows(c, _TABLE_TOP, lines)
+    _draw_footer(c, bottom)
     c.showPage()
     c.save()
     return buf.getvalue()
+
+
+def _continuation_bytes(lines: list[LineSnapshot], wm) -> bytes:
+    """A continuation page: purely the item-line table — seal, a column
+    header near the top, the rows, then the footer. No form header."""
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
+    _paint_seal(c, wm, _CONT_TABLE_TOP, _BOTTOM_LIMIT, clear=False)
+    rows_top = _draw_colheader(c, _CONT_TABLE_TOP)
+    bottom = _draw_rows(c, rows_top, lines)
+    _draw_footer(c, bottom)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def _rows_per_page(table_top: float) -> int:
+    """How many rows fit above the footer when the table starts at table_top."""
+    return max(1, int((_BOTTOM_LIMIT - _FOOTER_H - table_top) // _ROW_H))
 
 
 def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
@@ -517,33 +555,25 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
         raise PdfRenderError("overlay backend needs pypdf") from e
 
     blank_bytes = Path(src).read_bytes()
-    template = PdfReader(io.BytesIO(blank_bytes))
-    n_form_pages = len(template.pages)
+    n_form_pages = len(PdfReader(io.BytesIO(blank_bytes)).pages)
     wm = _watermark_image(blank_bytes)
 
-    # Chunk lines across as many copies of the first (line-item) page as
-    # needed; at least one page even when there are no lines.
-    chunks = [
-        snap.lines[i : i + _ROWS_PER_PAGE]
-        for i in range(0, max(len(snap.lines), 1), _ROWS_PER_PAGE)
-    ] or [[]]
+    rows = list(snap.lines)
+    cap1 = _rows_per_page(_TABLE_TOP)
+    cap_cont = _rows_per_page(_CONT_TABLE_TOP + _ROW_H)  # account for the column header
+    page1_rows, rest = rows[:cap1], rows[cap1:]
+    cont_chunks = [rest[i : i + cap_cont] for i in range(0, len(rest), cap_cont)]
 
-    last = len(chunks) - 1
     writer = PdfWriter()
-    for idx, chunk in enumerate(chunks):
-        src = PdfReader(io.BytesIO(blank_bytes)).pages[0]
-        # Attach to the writer first, then merge onto the writer-owned page —
-        # pypdf's supported (and reliable) overlay path.
-        page = writer.add_page(src)
-        ov = _overlay_page_bytes(
-            snap, chunk, with_header=(idx == 0), with_footer=(idx == last), wm=wm
-        )
-        page.merge_page(PdfReader(io.BytesIO(ov)).pages[0])
-
-    # Append the remaining form pages (signatures / notes) once, at the end.
+    # Page 1: overlay onto the blank-form background.
+    page = writer.add_page(PdfReader(io.BytesIO(blank_bytes)).pages[0])
+    page.merge_page(PdfReader(io.BytesIO(_page1_bytes(snap, page1_rows, wm))).pages[0])
+    # Continuation pages: clean item-line tables (footer on each).
+    for chunk in cont_chunks:
+        writer.add_page(PdfReader(io.BytesIO(_continuation_bytes(chunk, wm))).pages[0])
+    # Original signature / notes page appended last.
     if n_form_pages > 1:
-        tail = PdfReader(io.BytesIO(blank_bytes))
-        for p in tail.pages[1:]:
+        for p in PdfReader(io.BytesIO(blank_bytes)).pages[1:]:
             writer.add_page(p)
 
     out = io.BytesIO()
