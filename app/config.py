@@ -31,6 +31,7 @@ class Settings:
     pdf_backend: str
     fillable_pdf_path: Path | None
     overlay_pdf_path: Path
+    overlay_font_path: Path
     printer: str | None
     browser_storage: bool
     sessions_dir: Path
@@ -47,6 +48,9 @@ class Settings:
         if not overlay_default.exists():
             overlay_default = data_dir / "templates" / "Hazmat Request Blank.pdf"
         overlay = _path("HAZREQ_OVERLAY_PDF_PATH", overlay_default)
+        # Carlito = metric-compatible Calibri clone, matching the source form.
+        font_default = REPO_ROOT / "data" / "fonts" / "Carlito-Regular.ttf"
+        overlay_font = _path("HAZREQ_OVERLAY_FONT_PATH", font_default)
         sessions_default = Path(tempfile.gettempdir()) / "hazreq-sessions"
         return cls(
             db_url=os.environ.get("HAZREQ_DB_URL", db_default),
@@ -59,6 +63,7 @@ class Settings:
             pdf_backend=os.environ.get("HAZREQ_PDF_BACKEND", "overlay").lower(),
             fillable_pdf_path=fillable,
             overlay_pdf_path=overlay,
+            overlay_font_path=overlay_font,
             printer=(os.environ.get("HAZREQ_PRINTER") or None),
             browser_storage=os.environ.get("HAZREQ_BROWSER_STORAGE", "0") == "1",
             sessions_dir=_path("HAZREQ_SESSIONS_DIR", sessions_default),

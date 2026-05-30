@@ -250,13 +250,15 @@ def _convert_via_soffice(docx_bytes: bytes) -> bytes:
 
 PAGE_W, PAGE_H = 612.0, 792.0
 
-# attr on RequestSnapshot -> (value_x, band_top_y, band_bottom_y)
+# attr on RequestSnapshot -> (value_x, label_baseline_y). The baseline is
+# the label's own text baseline (measured from the form), so the value
+# sits on the same line as its label rather than floating in the cell.
 _OVERLAY_HEADER = {
-    "location": (185.0, 245.8, 271.8),
-    "name": (122.0, 297.9, 323.6),
-    "datetime": (151.0, 323.6, 349.6),
-    "workcenter": (158.0, 349.6, 375.6),
-    "lpo": (112.0, 375.6, 401.6),
+    "location": (184.0, 259.3),
+    "name": (122.0, 311.4),
+    "datetime": (151.0, 337.1),
+    "workcenter": (158.0, 363.1),
+    "lpo": (111.0, 389.1),
 }
 
 # Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
@@ -270,24 +272,53 @@ _OVERLAY_COLS = {
 _OVERLAY_ROW_RULES = [453.6, 479.6, 505.6, 531.7, 557.7, 583.4, 609.5, 635.5]
 _OVERLAY_ROWS_PER_PAGE = len(_OVERLAY_ROW_RULES) - 1  # 7
 
-_OVERLAY_FONT = "Helvetica"
-_HEADER_SIZE = 10.0
-_ROW_SIZE = 9.0
+_HEADER_SIZE = 11.0  # matches the form's Calibri 11 labels
+_HEADER_BASELINE_FIX = 2.4  # font descent: lift values onto the label baseline
+_ROW_SIZE = 10.0
+_ROW_MIN_SIZE = 7.5
 _CELL_PAD = 4.0
 
+# Lazily-registered overlay font: Carlito (metric-compatible with the
+# form's Calibri), falling back to Helvetica if the TTF isn't available.
+_FONT_LOCK = __import__("threading").Lock()
+_FONT_NAME: str | None = None
 
-def _fit_text(canvas_mod, text: str, max_w: float, size: float) -> tuple[str, float]:
-    """Return (text, size) shrinking the font (to 6pt) then truncating with
-    an ellipsis so the string fits within max_w."""
+
+def _overlay_font() -> str:
+    global _FONT_NAME
+    if _FONT_NAME is not None:
+        return _FONT_NAME
+    with _FONT_LOCK:
+        if _FONT_NAME is not None:
+            return _FONT_NAME
+        name = "Helvetica"
+        path = settings.overlay_font_path
+        try:
+            if path and Path(path).exists():
+                from reportlab.pdfbase import pdfmetrics
+                from reportlab.pdfbase.ttfonts import TTFont
+
+                pdfmetrics.registerFont(TTFont("HazreqForm", str(path)))
+                name = "HazreqForm"
+        except Exception as e:  # noqa: BLE001
+            log.warning("overlay font load failed (%s); using Helvetica", e)
+        _FONT_NAME = name
+        return name
+
+
+def _fit_text(text: str, max_w: float, size: float) -> tuple[str, float]:
+    """Return (text, size) shrinking the font (to _ROW_MIN_SIZE) then
+    truncating with an ellipsis so the string fits within max_w."""
     from reportlab.pdfbase.pdfmetrics import stringWidth
 
+    font = _overlay_font()
     text = text or ""
     s = size
-    while s > 6.0 and stringWidth(text, _OVERLAY_FONT, s) > max_w:
+    while s > _ROW_MIN_SIZE and stringWidth(text, font, s) > max_w:
         s -= 0.5
-    if stringWidth(text, _OVERLAY_FONT, s) <= max_w:
+    if stringWidth(text, font, s) <= max_w:
         return text, s
-    while text and stringWidth(text + "…", _OVERLAY_FONT, s) > max_w:
+    while text and stringWidth(text + "…", font, s) > max_w:
         text = text[:-1]
     return (text + "…") if text else "", s
 
@@ -295,15 +326,16 @@ def _fit_text(canvas_mod, text: str, max_w: float, size: float) -> tuple[str, fl
 def _draw_cell(c, col: str, text: str, row_top: float, row_bottom: float, center: bool) -> None:
     x0, x1 = _OVERLAY_COLS[col]
     max_w = (x1 - x0) - 2 * _CELL_PAD
-    text, size = _fit_text(c, text, max_w, _ROW_SIZE)
+    text, size = _fit_text(text, max_w, _ROW_SIZE)
     if not text:
         return
     from reportlab.pdfbase.pdfmetrics import stringWidth
 
+    font = _overlay_font()
     baseline_top = (row_top + row_bottom) / 2 + size * 0.35
     y = PAGE_H - baseline_top
-    c.setFont(_OVERLAY_FONT, size)
-    x = (x0 + x1) / 2 - stringWidth(text, _OVERLAY_FONT, size) / 2 if center else x0 + _CELL_PAD
+    c.setFont(font, size)
+    x = (x0 + x1) / 2 - stringWidth(text, font, size) / 2 if center else x0 + _CELL_PAD
     c.drawString(x, y, text)
 
 
@@ -314,13 +346,14 @@ def _overlay_page_bytes(snap: RequestSnapshot, lines: list[LineSnapshot]) -> byt
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
 
-    c.setFont(_OVERLAY_FONT, _HEADER_SIZE)
-    for attr, (vx, top, bot) in _OVERLAY_HEADER.items():
+    # Header: each value sits on its label's baseline (top-origin y). The
+    # measured baseline comes from the glyph-box bottom, which includes the
+    # font descent, so lift the value by that much to land on the baseline.
+    c.setFont(_overlay_font(), _HEADER_SIZE)
+    for attr, (vx, baseline) in _OVERLAY_HEADER.items():
         val = getattr(snap, attr, "") or ""
-        if not val:
-            continue
-        baseline_top = (top + bot) / 2 + _HEADER_SIZE * 0.35
-        c.drawString(vx, PAGE_H - baseline_top, val)
+        if val:
+            c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
 
     for i, line in enumerate(lines):
         row_top = _OVERLAY_ROW_RULES[i]

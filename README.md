@@ -108,6 +108,7 @@ All paths are env-driven (see `app/config.py`):
 | `HAZREQ_PERSIST_PDFS`       | `1`                               | Set to `0` for ephemeral PDFs |
 | `HAZREQ_PDF_BACKEND`        | `overlay`                         | `overlay` \| `docx` \| `fillable_pdf` |
 | `HAZREQ_OVERLAY_PDF_PATH`   | `./Hazmat Request Blank.pdf`      | Blank chit for the `overlay` backend |
+| `HAZREQ_OVERLAY_FONT_PATH`  | `./data/fonts/Carlito-Regular.ttf` | Fill font (Calibri-compatible) for `overlay` |
 
 A future web port can flip `HAZREQ_DB_URL` to `:memory:` and
 `HAZREQ_PERSIST_PDFS` to `0` to run with no server-side persistence.
