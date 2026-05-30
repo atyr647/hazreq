@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from app.services import backup as backup_service
+from app.ui import admin_repo, repo
 from app.ui import catalog_repo as cat
-from app.ui import repo
 
 # ---- helpers -----------------------------------------------------------
 
@@ -292,3 +293,54 @@ def test_print_request_without_cups_raises_cleanly(session, monkeypatch):
     with repo.session_scope() as s:
         assert repo.is_finalized(s, rid)
         assert repo.pdf_path(s, rid) is not None
+
+
+# ====================================================================
+# admin (health, audit, backup/restore)
+# ====================================================================
+
+def test_admin_health_keys(session):
+    h = admin_repo.health_info()
+    for key in ("db_path", "db_size_mb", "pdf_backend", "overlay_present",
+                "pdf_count", "printing", "printers"):
+        assert key in h
+
+
+def test_audit_log_records_catalog_mutations(session):
+    with repo.session_scope() as s:
+        cat.create_mip(s, "AUD-MIP", "x")
+    with repo.session_scope() as s:
+        rows = admin_repo.list_audit(s, q="AUD-MIP")
+        assert any(r.action == "create" and r.entity_key == "AUD-MIP" for r in rows)
+    # filter by action/type narrows the result
+    with repo.session_scope() as s:
+        assert all(r.action == "create" for r in admin_repo.list_audit(s, action="create"))
+        assert all(r.entity_type == "mip" for r in admin_repo.list_audit(s, entity_type="mip"))
+
+
+def test_backup_restore_roundtrip(session):
+    with repo.session_scope() as s:
+        _build_catalog(s)
+        rid = repo.create_draft(s)
+        repo.update_header(s, rid, requestor_name="BK")
+    with repo.session_scope() as s:
+        before = len(repo.list_requests(s))
+        mips_before = len(cat.mip_tree(s))
+    data = backup_service.make_backup_zip()
+    assert data[:2] == b"PK"
+    # mutate, then restore — the backup state should come back
+    with repo.session_scope() as s:
+        repo.delete_request(s, rid)
+    with repo.session_scope() as s:
+        assert len(repo.list_requests(s)) == before - 1
+    backup_service.restore_db_from_bytes(data)
+    with repo.session_scope() as s:
+        assert len(repo.list_requests(s)) == before
+        assert len(cat.mip_tree(s)) == mips_before
+
+
+def test_restore_rejects_invalid(session):
+    with pytest.raises(backup_service.BackupError):
+        backup_service.restore_db_from_bytes(b"not a database")
+    with pytest.raises(backup_service.BackupError):
+        backup_service.restore_db_from_bytes(b"")

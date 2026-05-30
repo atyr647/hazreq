@@ -102,6 +102,7 @@ def main() -> int:
     _drive_builder(app, pump)
     _drive_history(app, pump)
     _drive_catalog(app, pump)
+    _drive_admin(app, pump)
     app.destroy()
 
     print(f"\n==== {len(CHECKS)} checks, {len(FAILURES)} failures ====")
@@ -279,6 +280,35 @@ def _drive_catalog(app, pump) -> None:
     with repo.session_scope() as s:
         check("catalog.delete_guard_blocks", sp_with_items in [sp.id for sp in cr.spmig_tree(s)])
         cr.delete_mip(s, mid)  # cleanup (cascades MRC + link)
+
+
+def _drive_admin(app, pump) -> None:
+    from tkinter import filedialog
+
+    from app.ui import catalog_repo as cr
+
+    # ensure there's at least one audit row to show
+    with repo.session_scope() as s:
+        mid = cr.create_mip(s, "ADMIN-DRV-MIP", "x")
+
+    app.show_admin()
+    pump()
+    a = app._current
+    check("admin.health_populated", a._health_labels["backend"].cget("text") == "overlay")
+
+    a.audit_q.set("ADMIN-DRV-MIP")
+    a.refresh_audit()
+    pump()
+    check("admin.audit_shows_mutation", len(a.audit.get_children()) >= 1)
+
+    out = os.path.join(_DATA, "drv-backup.zip")
+    filedialog.asksaveasfilename = lambda *args, **kw: out
+    a._backup()
+    pump()
+    check("admin.backup_writes_file", os.path.exists(out) and os.path.getsize(out) > 0)
+
+    with repo.session_scope() as s:
+        cr.delete_mip(s, mid)
 
 
 if __name__ == "__main__":

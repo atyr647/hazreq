@@ -32,9 +32,9 @@ starts uvicorn with auto-reload at <http://localhost:8000>.
 A native Tkinter front-end that calls the service layer in-process — no
 WebKitGTK, no uvicorn, no HTTP. It exists because WebKit was the heaviest
 thing on the Pi; dropping it (plus the pure-Python `overlay` PDF backend)
-is the performance win. Covers the core workflow today: **new request,
-history, and catalog management**. Admin (backup/restore/health) is still
-web-only.
+is the performance win. Covers the full app: **new request, history,
+catalog management, and admin** (backup/restore, catalog CSV + whole-DB
+JSON import/export, health, audit log).
 
 ```bash
 sudo apt install python3-tk          # Raspberry Pi OS; Void: xbps-install -S python3-tkinter

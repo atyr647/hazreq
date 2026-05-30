@@ -13,6 +13,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from app.ui import repo
+from app.ui.admin import AdminScreen
 from app.ui.builder import BuilderApp
 from app.ui.catalog import CatalogScreen
 from app.ui.history import HistoryScreen
@@ -31,6 +32,7 @@ class AppShell(tk.Tk):
         ttk.Button(self._nav, text="＋ New request", command=self.new_request).pack(side="left")
         ttk.Button(self._nav, text="History", command=self.show_history).pack(side="left", padx=6)
         ttk.Button(self._nav, text="Catalog", command=self.show_catalog).pack(side="left")
+        ttk.Button(self._nav, text="Admin", command=self.show_admin).pack(side="left", padx=6)
         self._crumb = ttk.Label(self._nav, text="", anchor="e")
         self._crumb.pack(side="right", fill="x", expand=True)
 
@@ -56,6 +58,9 @@ class AppShell(tk.Tk):
 
     def show_catalog(self) -> None:
         self._swap(lambda parent: CatalogScreen(parent, self), "Catalog")
+
+    def show_admin(self) -> None:
+        self._swap(lambda parent: AdminScreen(parent, self), "Admin")
 
     def open_request(self, request_id: int) -> None:
         self._swap(

@@ -260,7 +260,7 @@ backend (11.5a) removed the other big cost (LibreOffice).
 | 14.6 | Decouple `app/db.py` from FastAPI | Done | `get_session` moved to `app/web_deps.py`; the data layer (and Tk app) no longer import FastAPI/Starlette |
 | 14.7 | `pip install -e .` fixed | Done | Added `[build-system]` + setuptools `packages.find` (include `app*`); flat layout had broken editable installs |
 | 14.8 | Native Tk AppImage (`deploy/build_tk_appimage.sh`) | Drafted | Uses python-build-standalone (ships Tk); lean deps (no FastAPI/uvicorn/Jinja); overlay PDF backend; **not yet validated on a real build host** |
-| 14.9 | Admin screen (backup / restore / health / audit / CSV) | Not started | Still web-only |
+| 14.9 | Admin screen (`app/ui/admin.py`, `admin_repo.py`) | Done | Health, backup/restore (shared `app/services/backup.py`), catalog CSV + whole-DB JSON import/export, filterable audit log. All four web surfaces now have a native equivalent |
 
 ---
 
