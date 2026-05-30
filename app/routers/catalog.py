@@ -6,9 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.db import get_session
 from app.models import MIP, MRC, SPMIG, HazmatItem, MRCItem
 from app.templating import render, render_partial
+from app.web_deps import get_session
 
 router = APIRouter()
 

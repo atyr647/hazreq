@@ -243,6 +243,27 @@ This roadmap tracks every discrete piece of work. Update **Status** and **Notes*
 
 ---
 
+## Phase 14 — Native Tk port (Pi 400 performance)
+
+Replaces the WebKitGTK + FastAPI + uvicorn stack with a native Tkinter
+app that calls the service layer in-process. Motivated by Pi 400
+sluggishness: WebKit was the heaviest resident component; the overlay PDF
+backend (11.5a) removed the other big cost (LibreOffice).
+
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 14.1 | In-process data layer (`app/ui/repo.py`) | Done | Request flow: search, load-mrc, add/swap/move lines, finalize — one session per UI action, no HTTP |
+| 14.2 | New-request builder screen (`app/ui/builder.py`) | Done | Search-centric builder; inline qty edit; finalize off the UI thread; read-only view for finalized requests |
+| 14.3 | App shell + navigation (`app/ui/shell.py`) | Done | Nav bar (New Request / History / Catalog) + swappable content area |
+| 14.4 | History screen (`app/ui/history.py`) | Done | Live search + status filter; open / duplicate / delete; open-PDF / reprint for finalized |
+| 14.5 | Catalog management (`app/ui/catalog.py`, `catalog_repo.py`) | Done | MIP/MRC tree + per-MRC item links (add/remove/reorder); SPMIG/item tree; create/edit/delete with the web app's delete guards |
+| 14.6 | Decouple `app/db.py` from FastAPI | Done | `get_session` moved to `app/web_deps.py`; the data layer (and Tk app) no longer import FastAPI/Starlette |
+| 14.7 | `pip install -e .` fixed | Done | Added `[build-system]` + setuptools `packages.find` (include `app*`); flat layout had broken editable installs |
+| 14.8 | Native Tk AppImage (`deploy/build_tk_appimage.sh`) | Drafted | Uses python-build-standalone (ships Tk); lean deps (no FastAPI/uvicorn/Jinja); overlay PDF backend; **not yet validated on a real build host** |
+| 14.9 | Admin screen (backup / restore / health / audit / CSV) | Not started | Still web-only |
+
+---
+
 ## Deferred (post-v1)
 
 | # | Item | Notes |

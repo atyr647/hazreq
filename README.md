@@ -27,7 +27,27 @@ starts uvicorn with auto-reload at <http://localhost:8000>.
 - Admin: download `.zip` of DB + PDFs, restore from a `.db` upload, health
   page showing DB / unoserver / template / disk status.
 
-## Deployment on a Pi 400
+## Native Tk app (fastest on the Pi 400)
+
+A native Tkinter front-end that calls the service layer in-process — no
+WebKitGTK, no uvicorn, no HTTP. It exists because WebKit was the heaviest
+thing on the Pi; dropping it (plus the pure-Python `overlay` PDF backend)
+is the performance win. Covers the core workflow today: **new request,
+history, and catalog management**. Admin (backup/restore/health) is still
+web-only.
+
+```bash
+sudo apt install python3-tk          # Raspberry Pi OS; Void: xbps-install -S python3-tkinter
+PYTHONPATH=. python scripts/tk_prototype.py
+```
+
+Or build a self-contained AppImage (bundles Python + Tk, no host Python
+needed) with `deploy/build_tk_appimage.sh`. It uses python-build-standalone
+because, unlike the web AppImage's base, that interpreter ships Tk. The
+data layer is decoupled from FastAPI, so the bundle carries only
+SQLAlchemy + Alembic + docxtpl + pypdf + reportlab.
+
+## Deployment on a Pi 400 (web UI)
 
 Three paths — pick whichever fits.
 

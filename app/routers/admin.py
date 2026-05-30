@@ -11,18 +11,18 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db import engine, get_session
+from app.db import engine
 from app.models import AuditLog
-from app.services import csvio
-from app.services import jsonio
+from app.services import csvio, jsonio
 from app.services.pdf import _unoserver_alive
-from app.services.printer import default_printer, is_available as printing_available, list_printers
+from app.services.printer import default_printer, list_printers
+from app.services.printer import is_available as printing_available
 from app.templating import render
-
-from sqlalchemy import select
+from app.web_deps import get_session
 
 router = APIRouter()
 log = logging.getLogger(__name__)

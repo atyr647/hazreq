@@ -1,29 +1,29 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db import get_session
 from app.models import (
     MIP,
     MRC,
     SPMIG,
     HazmatItem,
     MRCItem,
-    Request as ReqModel,
     RequestLine,
 )
-from pathlib import Path
-
+from app.models import (
+    Request as ReqModel,
+)
 from app.services import printer as printer_service
 from app.services.pdf import PdfRenderError, render_request_pdf
 from app.templating import render, render_partial
-
-import logging
+from app.web_deps import get_session
 
 router = APIRouter()
 log = logging.getLogger(__name__)

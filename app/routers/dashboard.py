@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.db import get_session
-from app.models import MIP, MRC, SPMIG, HazmatItem, Request as ReqModel
+from app.models import MIP, MRC, SPMIG, HazmatItem
+from app.models import Request as ReqModel
 from app.templating import render
+from app.web_deps import get_session
 
 router = APIRouter()
 

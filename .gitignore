@@ -10,6 +10,7 @@ __pycache__/
 # AppImage build scratch (built artifacts in dist/ are committed)
 build-appimage/
 build-tauri/
+build-tk-appimage/
 
 # Local data (created at runtime)
 data/hazreq.db

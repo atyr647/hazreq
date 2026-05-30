@@ -13,11 +13,9 @@ tests and ad-hoc tooling.
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Request
 from sqlalchemy import DateTime, create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
@@ -119,17 +117,6 @@ def sessionmaker_for_session(session_id: str) -> sessionmaker:
     return _session_makers[session_id]
 
 
-def get_session(request: Request) -> Iterator[Session]:
-    """FastAPI dependency yielding a Session.
-
-    In browser-storage mode the middleware sets request.state.session_id;
-    we look up the per-cookie sessionmaker. Otherwise fall back to the
-    module-level SessionLocal that's bound to settings.db_url.
-    """
-    sid = getattr(request.state, "session_id", None)
-    maker = sessionmaker_for_session(sid) if sid else SessionLocal
-    s = maker()
-    try:
-        yield s
-    finally:
-        s.close()
+# The FastAPI `get_session` dependency lives in app.web_deps so that
+# importing app.db (and the data layer / native Tk app on top of it) never
+# pulls in FastAPI.
