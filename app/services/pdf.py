@@ -278,9 +278,18 @@ _COL_EDGES = (76.5, 206.8, 360.1, 503.2, 553.7)
 _TABLE_X0, _TABLE_X1 = 76.5, 553.7
 _TABLE_TOP = 453.6        # top of the first data row (top-origin y)
 _ROW_H = 25.98            # matches the form's row pitch
-_ROWS_PER_PAGE = 7        # rows that fit before the ISSUING HAZMAT footer
-_BAND_BOTTOM = 635.5      # bottom of the pre-printed data region to clear
+_ROWS_PER_PAGE = 7        # rows + footer fit between the column header and form bottom
+_CLEAR_BOTTOM = 712.7     # clear the whole lower area (rows + original footer)
 _GRID_LINE_W = 0.6
+
+# Footer block ("ISSUING HAZMAT" + signature box), redrawn directly under
+# the table so it follows the rows. Offsets are top-origin from the footer
+# block's own top; measured from the form (height 712.7 - 635.5 = 77.2).
+_FOOTER_H = 77.2
+_FOOTER_MID = 26.0         # ISSUING HAZMAT row height
+_ISSUING_BASE = 13.5       # "ISSUING HAZMAT" baseline within the block
+_MAINT_BASE = 39.5         # "MAINTENANCE REQUESTOR :" baseline
+_SIG_BASE = 64.7           # "DIGITAL SIGNATURE:" baseline
 
 # Watermark seal placement in the source form (bottom-origin). The form
 # draws it at ca=1 (the fade is baked into the JPEG), so we re-paint it
@@ -340,6 +349,33 @@ def _overlay_font() -> str:
         return name
 
 
+_FONT_BOLD_NAME: str | None = None
+
+
+def _overlay_font_bold() -> str:
+    """Bold variant (Carlito-Bold) for the redrawn footer labels, which are
+    bold on the form. Falls back to the regular overlay font."""
+    global _FONT_BOLD_NAME
+    if _FONT_BOLD_NAME is not None:
+        return _FONT_BOLD_NAME
+    with _FONT_LOCK:
+        if _FONT_BOLD_NAME is not None:
+            return _FONT_BOLD_NAME
+        name = _overlay_font()
+        try:
+            bold = Path(settings.overlay_font_path).with_name("Carlito-Bold.ttf")
+            if bold.exists():
+                from reportlab.pdfbase import pdfmetrics
+                from reportlab.pdfbase.ttfonts import TTFont
+
+                pdfmetrics.registerFont(TTFont("HazreqFormBold", str(bold)))
+                name = "HazreqFormBold"
+        except Exception as e:  # noqa: BLE001
+            log.warning("overlay bold font load failed (%s)", e)
+        _FONT_BOLD_NAME = name
+        return name
+
+
 def _fit_text(text: str, max_w: float, size: float) -> tuple[str, float]:
     """Return (text, size) shrinking the font (to _ROW_MIN_SIZE) then
     truncating with an ellipsis so the string fits within max_w."""
@@ -373,11 +409,41 @@ def _draw_cell(c, col: str, text: str, row_top: float, row_bottom: float, center
     c.drawString(x, y, text)
 
 
+def _draw_footer(c, footer_top: float) -> None:
+    """Redraw the form's footer block (ISSUING HAZMAT row + signature box)
+    with its top at footer_top, so it follows directly under the table."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    bold = _overlay_font_bold()
+    c.setLineWidth(_GRID_LINE_W)
+    # Box rules: top, the ISSUING/MAINTENANCE divider, and the bottom.
+    for off in (0.0, _FOOTER_MID, _FOOTER_H):
+        yy = PAGE_H - (footer_top + off)
+        c.line(_TABLE_X0, yy, _TABLE_X1, yy)
+    # Side borders down the whole block.
+    for x in (_TABLE_X0, _TABLE_X1):
+        c.line(x, PAGE_H - footer_top, x, PAGE_H - (footer_top + _FOOTER_H))
+    # "ISSUING HAZMAT" centred in the top row.
+    c.setFont(bold, _HEADER_SIZE)
+    txt = "ISSUING HAZMAT"
+    cx = (_TABLE_X0 + _TABLE_X1) / 2 - stringWidth(txt, bold, _HEADER_SIZE) / 2
+    c.drawString(cx, PAGE_H - (footer_top + _ISSUING_BASE), txt)
+    # Requestor + signature labels.
+    c.drawString(81.8, PAGE_H - (footer_top + _MAINT_BASE), "MAINTENANCE REQUESTOR :")
+    sig = "DIGITAL SIGNATURE:"
+    c.drawString(81.8, PAGE_H - (footer_top + _SIG_BASE), sig)
+    # Signature rule after the label.
+    sig_x = 81.8 + stringWidth(sig, bold, _HEADER_SIZE) + 8
+    sy = PAGE_H - (footer_top + _SIG_BASE) + 1
+    c.line(sig_x, sy, 360.0, sy)
+
+
 def _overlay_page_bytes(
-    snap: RequestSnapshot, lines: list[LineSnapshot], *, with_header: bool, wm
+    snap: RequestSnapshot, lines: list[LineSnapshot], *, with_header: bool, with_footer: bool, wm
 ) -> bytes:
-    """One overlay page: optional header values, then a dynamically-sized
-    line-item table (exactly len(lines) rows) drawn over the cleared band."""
+    """One overlay page: optional header values, a dynamically-sized table
+    (exactly len(lines) rows), and — on the last page — the footer block
+    redrawn directly under the table so it follows the rows."""
     from reportlab.pdfgen import canvas
 
     buf = io.BytesIO()
@@ -393,26 +459,27 @@ def _overlay_page_bytes(
             if val:
                 c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
 
-    # 1. Clear the form's pre-printed data rows.
-    band_y = PAGE_H - _BAND_BOTTOM
-    band_h = _BAND_BOTTOM - _TABLE_TOP
+    # 1. Clear the whole lower area (pre-printed rows + the original footer),
+    #    so we can draw a dynamic table with the footer following it.
+    clear_y = PAGE_H - _CLEAR_BOTTOM
+    clear_h = _CLEAR_BOTTOM - _TABLE_TOP
     box_x, box_w = _TABLE_X0 - 1.0, (_TABLE_X1 - _TABLE_X0) + 2.0
     c.setFillColorRGB(1, 1, 1)
-    c.rect(box_x, band_y, box_w, band_h, fill=1, stroke=0)
+    c.rect(box_x, clear_y, box_w, clear_h, fill=1, stroke=0)
     c.setFillColorRGB(0, 0, 0)
 
-    # 2. Re-paint the seal, clipped to that band, so it shows behind the
-    #    new rows exactly as in the original (same image, same placement).
+    # 2. Re-paint the seal, clipped to the cleared area, so it shows behind
+    #    the new content exactly as in the original (same image + placement).
     if wm is not None:
         c.saveState()
         clip = c.beginPath()
-        clip.rect(box_x, band_y, box_w, band_h)
+        clip.rect(box_x, clear_y, box_w, clear_h)
         c.clipPath(clip, stroke=0, fill=0)
         x, y, w, h = _WM_RECT
         c.drawImage(wm, x, y, width=w, height=h, mask="auto")
         c.restoreState()
 
-    # 3. Draw exactly N rows of grid, then the cell text.
+    # 3. Draw exactly N rows of grid + cell text.
     n = len(lines)
     table_bottom = _TABLE_TOP + n * _ROW_H
     c.setLineWidth(_GRID_LINE_W)
@@ -428,6 +495,10 @@ def _overlay_page_bytes(
         _draw_cell(c, "nomenclature", line.nomenclature, rt, rb, center=False)
         _draw_cell(c, "niin", line.niin, rt, rb, center=True)
         _draw_cell(c, "qty", line.qty, rt, rb, center=True)
+
+    # 4. Footer follows the table on the final page.
+    if with_footer:
+        _draw_footer(c, table_bottom)
 
     c.showPage()
     c.save()
@@ -457,13 +528,16 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
         for i in range(0, max(len(snap.lines), 1), _ROWS_PER_PAGE)
     ] or [[]]
 
+    last = len(chunks) - 1
     writer = PdfWriter()
     for idx, chunk in enumerate(chunks):
         src = PdfReader(io.BytesIO(blank_bytes)).pages[0]
         # Attach to the writer first, then merge onto the writer-owned page —
         # pypdf's supported (and reliable) overlay path.
         page = writer.add_page(src)
-        ov = _overlay_page_bytes(snap, chunk, with_header=(idx == 0), wm=wm)
+        ov = _overlay_page_bytes(
+            snap, chunk, with_header=(idx == 0), with_footer=(idx == last), wm=wm
+        )
         page.merge_page(PdfReader(io.BytesIO(ov)).pages[0])
 
     # Append the remaining form pages (signatures / notes) once, at the end.
