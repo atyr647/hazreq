@@ -173,6 +173,7 @@ def load_mrc(s: Session, request_id: int, mrc_id: int) -> tuple[int, list[str]]:
     if r.source_mip_id is None:
         r.source_mip_id = mrc.mip_id
         r.source_mrc_id = mrc.id
+    s.flush()
     return added, skipped
 
 
@@ -200,6 +201,7 @@ def add_item(s: Session, request_id: int, hazmat_item_id: int) -> bool:
             qty=1,
         )
     )
+    s.flush()
     return True
 
 
@@ -217,6 +219,7 @@ def add_manual_line(
             qty=qty,
         )
     )
+    s.flush()
 
 
 def set_qty(s: Session, request_id: int, line_id: int, qty: int | None) -> None:
@@ -224,6 +227,7 @@ def set_qty(s: Session, request_id: int, line_id: int, qty: int | None) -> None:
     if not line or line.request_id != request_id:
         raise LookupError("line not found")
     line.qty = qty
+    s.flush()
 
 
 def delete_line(s: Session, request_id: int, line_id: int) -> None:
@@ -231,6 +235,7 @@ def delete_line(s: Session, request_id: int, line_id: int) -> None:
     if not line or line.request_id != request_id:
         raise LookupError("line not found")
     s.delete(line)
+    s.flush()
 
 
 def move_line(s: Session, request_id: int, line_id: int, direction: str) -> None:
@@ -251,6 +256,7 @@ def move_line(s: Session, request_id: int, line_id: int, direction: str) -> None
     else:
         return
     lines[idx].sort_order, lines[j].sort_order = lines[j].sort_order, lines[idx].sort_order
+    s.flush()
 
 
 def alternates(s: Session, line_id: int) -> list[HazmatItem]:
@@ -281,6 +287,7 @@ def swap_alternate(s: Session, request_id: int, line_id: int, to_item_id: int) -
     line.spmig_code = sp.code if sp else None
     line.nomenclature = new_item.nomenclature
     line.niin = new_item.niin
+    s.flush()
 
 
 # ---- finalize ----------------------------------------------------------
@@ -418,6 +425,7 @@ def duplicate_request(s: Session, request_id: int) -> int:
                 qty=line.qty,
             )
         )
+    s.flush()
     return dup.id
 
 
@@ -425,6 +433,7 @@ def delete_request(s: Session, request_id: int) -> None:
     r = s.get(Request, request_id)
     if r:
         s.delete(r)
+        s.flush()
 
 
 def reopen_request(s: Session, request_id: int) -> None:
@@ -432,6 +441,7 @@ def reopen_request(s: Session, request_id: int) -> None:
     path is left in place until the next finalize overwrites it."""
     r = get_request(s, request_id)
     r.finalized_at = None
+    s.flush()
 
 
 def pdf_path(s: Session, request_id: int) -> str | None:
@@ -445,6 +455,9 @@ def print_request(s: Session, request_id: int, copies: int = 1) -> str:
     r = get_request(s, request_id)
     if not (r.pdf_path and Path(r.pdf_path).exists()):
         finalize(s, request_id)  # auto-finalize so one click is enough
+        # Persist the finalize+PDF *before* attempting to print, so a print
+        # failure (e.g. no CUPS) doesn't roll back a perfectly good finalize.
+        s.commit()
         r = get_request(s, request_id)
     if not (r.pdf_path and Path(r.pdf_path).exists()):
         raise FinalizeError("No PDF available to print.")
