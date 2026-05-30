@@ -269,9 +269,42 @@ _OVERLAY_COLS = {
     "niin": (360.1, 503.2),
     "qty": (503.2, 553.7),
 }
-# Horizontal rules bounding each of the 7 line rows (top-origin y).
-_OVERLAY_ROW_RULES = [453.6, 479.6, 505.6, 531.7, 557.7, 583.4, 609.5, 635.5]
-_OVERLAY_ROWS_PER_PAGE = len(_OVERLAY_ROW_RULES) - 1  # 7
+_COL_EDGES = (76.5, 206.8, 360.1, 503.2, 553.7)
+
+# The data-row table is drawn DYNAMICALLY: exactly N rows for N items, so
+# it grows/shrinks instead of using the form's fixed pre-printed grid. The
+# pre-printed rows in this band are whited out and the seal re-painted
+# behind the new rows.
+_TABLE_X0, _TABLE_X1 = 76.5, 553.7
+_TABLE_TOP = 453.6        # top of the first data row (top-origin y)
+_ROW_H = 25.98            # matches the form's row pitch
+_ROWS_PER_PAGE = 7        # rows that fit before the ISSUING HAZMAT footer
+_BAND_BOTTOM = 635.5      # bottom of the pre-printed data region to clear
+_GRID_LINE_W = 0.6
+
+# Watermark seal placement in the source form (bottom-origin). The form
+# draws it at ca=1 (the fade is baked into the JPEG), so we re-paint it
+# as-is, clipped to the cleared band.
+_WM_RECT = (74.25, 110.32, 515.25, 517.43)
+_WM_CACHE: dict[int, bytes] = {}
+
+
+def _watermark_image(blank_bytes: bytes):
+    """ImageReader for the form's seal (extracted once), or None."""
+    from reportlab.lib.utils import ImageReader
+
+    data = _WM_CACHE.get(len(blank_bytes))
+    if data is None:
+        try:
+            from pypdf import PdfReader
+
+            imgs = PdfReader(io.BytesIO(blank_bytes)).pages[0].images
+            data = imgs[0].data if imgs else b""
+        except Exception as e:  # noqa: BLE001
+            log.warning("watermark extraction failed: %s", e)
+            data = b""
+        _WM_CACHE[len(blank_bytes)] = data
+    return ImageReader(io.BytesIO(data)) if data else None
 
 _HEADER_SIZE = 11.0  # matches the form's Calibri 11 labels
 _HEADER_BASELINE_FIX = 2.4  # font descent: lift values onto the label baseline
@@ -340,29 +373,61 @@ def _draw_cell(c, col: str, text: str, row_top: float, row_bottom: float, center
     c.drawString(x, y, text)
 
 
-def _overlay_page_bytes(snap: RequestSnapshot, lines: list[LineSnapshot]) -> bytes:
-    """One overlay page: header block + up to 7 line rows."""
+def _overlay_page_bytes(
+    snap: RequestSnapshot, lines: list[LineSnapshot], *, with_header: bool, wm
+) -> bytes:
+    """One overlay page: optional header values, then a dynamically-sized
+    line-item table (exactly len(lines) rows) drawn over the cleared band."""
     from reportlab.pdfgen import canvas
 
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
 
-    # Header: each value sits on its label's baseline (top-origin y). The
-    # measured baseline comes from the glyph-box bottom, which includes the
-    # font descent, so lift the value by that much to land on the baseline.
-    c.setFont(_overlay_font(), _HEADER_SIZE)
-    for attr, (vx, baseline) in _OVERLAY_HEADER.items():
-        val = getattr(snap, attr, "") or ""
-        if val:
-            c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
+    if with_header:
+        # Each value sits on its label's baseline (top-origin y). The measured
+        # baseline is the glyph-box bottom, which includes the font descent,
+        # so lift the value by that much to land on the baseline.
+        c.setFont(_overlay_font(), _HEADER_SIZE)
+        for attr, (vx, baseline) in _OVERLAY_HEADER.items():
+            val = getattr(snap, attr, "") or ""
+            if val:
+                c.drawString(vx, PAGE_H - (baseline - _HEADER_BASELINE_FIX), val)
 
+    # 1. Clear the form's pre-printed data rows.
+    band_y = PAGE_H - _BAND_BOTTOM
+    band_h = _BAND_BOTTOM - _TABLE_TOP
+    box_x, box_w = _TABLE_X0 - 1.0, (_TABLE_X1 - _TABLE_X0) + 2.0
+    c.setFillColorRGB(1, 1, 1)
+    c.rect(box_x, band_y, box_w, band_h, fill=1, stroke=0)
+    c.setFillColorRGB(0, 0, 0)
+
+    # 2. Re-paint the seal, clipped to that band, so it shows behind the
+    #    new rows exactly as in the original (same image, same placement).
+    if wm is not None:
+        c.saveState()
+        clip = c.beginPath()
+        clip.rect(box_x, band_y, box_w, band_h)
+        c.clipPath(clip, stroke=0, fill=0)
+        x, y, w, h = _WM_RECT
+        c.drawImage(wm, x, y, width=w, height=h, mask="auto")
+        c.restoreState()
+
+    # 3. Draw exactly N rows of grid, then the cell text.
+    n = len(lines)
+    table_bottom = _TABLE_TOP + n * _ROW_H
+    c.setLineWidth(_GRID_LINE_W)
+    for i in range(n + 1):  # horizontal rules
+        yy = PAGE_H - (_TABLE_TOP + i * _ROW_H)
+        c.line(_TABLE_X0, yy, _TABLE_X1, yy)
+    for x in _COL_EDGES:  # column dividers
+        c.line(x, PAGE_H - _TABLE_TOP, x, PAGE_H - table_bottom)
     for i, line in enumerate(lines):
-        row_top = _OVERLAY_ROW_RULES[i]
-        row_bottom = _OVERLAY_ROW_RULES[i + 1]
-        _draw_cell(c, "spmig", line.spmig, row_top, row_bottom, center=False)
-        _draw_cell(c, "nomenclature", line.nomenclature, row_top, row_bottom, center=False)
-        _draw_cell(c, "niin", line.niin, row_top, row_bottom, center=True)
-        _draw_cell(c, "qty", line.qty, row_top, row_bottom, center=True)
+        rt = _TABLE_TOP + i * _ROW_H
+        rb = rt + _ROW_H
+        _draw_cell(c, "spmig", line.spmig, rt, rb, center=False)
+        _draw_cell(c, "nomenclature", line.nomenclature, rt, rb, center=False)
+        _draw_cell(c, "niin", line.niin, rt, rb, center=True)
+        _draw_cell(c, "qty", line.qty, rt, rb, center=True)
 
     c.showPage()
     c.save()
@@ -383,22 +448,23 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
     blank_bytes = Path(src).read_bytes()
     template = PdfReader(io.BytesIO(blank_bytes))
     n_form_pages = len(template.pages)
+    wm = _watermark_image(blank_bytes)
 
     # Chunk lines across as many copies of the first (line-item) page as
     # needed; at least one page even when there are no lines.
     chunks = [
-        snap.lines[i : i + _OVERLAY_ROWS_PER_PAGE]
-        for i in range(0, max(len(snap.lines), 1), _OVERLAY_ROWS_PER_PAGE)
+        snap.lines[i : i + _ROWS_PER_PAGE]
+        for i in range(0, max(len(snap.lines), 1), _ROWS_PER_PAGE)
     ] or [[]]
 
     writer = PdfWriter()
-    for chunk in chunks:
+    for idx, chunk in enumerate(chunks):
         src = PdfReader(io.BytesIO(blank_bytes)).pages[0]
         # Attach to the writer first, then merge onto the writer-owned page —
         # pypdf's supported (and reliable) overlay path.
         page = writer.add_page(src)
-        overlay = PdfReader(io.BytesIO(_overlay_page_bytes(snap, chunk))).pages[0]
-        page.merge_page(overlay)
+        ov = _overlay_page_bytes(snap, chunk, with_header=(idx == 0), wm=wm)
+        page.merge_page(PdfReader(io.BytesIO(ov)).pages[0])
 
     # Append the remaining form pages (signatures / notes) once, at the end.
     if n_form_pages > 1:
