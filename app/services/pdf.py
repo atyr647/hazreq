@@ -264,8 +264,12 @@ _OVERLAY_HEADER = {
     "lpo": (213.0, 389.1),
 }
 
-_LCU_LABEL_X = 81.8   # x-start of the "Yokose/LCU Main Base" label (form left margin)
-_LCU_LABEL_Y = 274.4  # baseline — the row where "LCU MAIN BASE" is pre-printed on the form
+_LCU_LABEL_X = 81.8   # x-start of the label (form left margin), measured from the form
+_LCU_LABEL_Y = 285.4  # baseline of the pre-printed "LCU MAIN BASE" (pdfminer-measured)
+# Narrow white band over just the "LCU MAIN BASE" text so the replacement
+# label sits cleanly in its place. Stays left of the 206.8 column divider and
+# clear of the HAZMAT LOCATION row above and NAME row below. (top-origin)
+_LCU_CLEAR_RECT = (80.0, 271.0, 205.0, 288.0)
 
 # Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
 _OVERLAY_COLS = {
@@ -706,12 +710,16 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
     # released) before we enter the bold path or we deadlock.
     reg, bold = _overlay_font(), _overlay_font_bold()
 
-    # "Yokose/LCU Main Base" label on the LCU row (y=274.4, one line below
-    # HAZMAT LOCATION at 259.3). Drawn directly over the pre-printed
-    # "LCU MAIN BASE" text with no white-out underneath.
+    # Replace the form's pre-printed "LCU MAIN BASE" (baseline 285.4) with the
+    # uppercase "YOKOSE/LCU MAIN BASE" label. A narrow white band covers only
+    # that text — the HAZMAT LOCATION row above is left untouched.
+    cx0, cy0, cx1, cy1 = _LCU_CLEAR_RECT
+    doc.c.setFillColorRGB(1, 1, 1)
+    doc.c.rect(cx0, PAGE_H - cy1, cx1 - cx0, cy1 - cy0, fill=1, stroke=0)
+    doc.c.setFillColorRGB(0, 0, 0)
     lcu_y = PAGE_H - (_LCU_LABEL_Y - _HEADER_BASELINE_FIX)
     doc.c.setFont(bold, _HEADER_SIZE)
-    doc.c.drawString(_LCU_LABEL_X, lcu_y, "Yokose/LCU Main Base")
+    doc.c.drawString(_LCU_LABEL_X, lcu_y, "YOKOSE/LCU MAIN BASE")
     if snap.base_location:
         doc.c.setFont(reg, _HEADER_SIZE)
         doc.c.drawString(213.0, lcu_y, snap.base_location)
