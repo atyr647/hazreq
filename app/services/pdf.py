@@ -710,13 +710,24 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
     # released) before we enter the bold path or we deadlock.
     reg, bold = _overlay_font(), _overlay_font_bold()
 
-    # Replace the form's pre-printed "LCU MAIN BASE" (baseline 285.4) with the
-    # uppercase "YOKOSE/LCU MAIN BASE" label. A narrow white band covers only
-    # that text — the HAZMAT LOCATION row above is left untouched.
+    # Replace the form's pre-printed "LCU MAIN BASE":
+    #  1. white out the narrow text band
+    #  2. repaint the watermark in that band (same technique as the table region)
+    #  3. draw "YOKOSE/LCU MAIN BASE" + user's choice on top
     cx0, cy0, cx1, cy1 = _LCU_CLEAR_RECT
+    bx, by = cx0, PAGE_H - cy1
+    bw, bh = cx1 - cx0, cy1 - cy0
     doc.c.setFillColorRGB(1, 1, 1)
-    doc.c.rect(cx0, PAGE_H - cy1, cx1 - cx0, cy1 - cy0, fill=1, stroke=0)
+    doc.c.rect(bx, by, bw, bh, fill=1, stroke=0)
     doc.c.setFillColorRGB(0, 0, 0)
+    if doc.wm is not None:
+        doc.c.saveState()
+        clip = doc.c.beginPath()
+        clip.rect(bx, by, bw, bh)
+        doc.c.clipPath(clip, stroke=0, fill=0)
+        wx, wy, ww, wh = _WM_RECT
+        doc.c.drawImage(doc.wm, wx, wy, width=ww, height=wh, mask="auto")
+        doc.c.restoreState()
     lcu_y = PAGE_H - (_LCU_LABEL_Y - _HEADER_BASELINE_FIX)
     doc.c.setFont(bold, _HEADER_SIZE)
     doc.c.drawString(_LCU_LABEL_X, lcu_y, "YOKOSE/LCU MAIN BASE")
