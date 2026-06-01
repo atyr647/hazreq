@@ -269,7 +269,7 @@ _LCU_LABEL_Y = 285.4  # baseline of the pre-printed "LCU MAIN BASE" (pdfminer-me
 # Narrow white band over just the "LCU MAIN BASE" text so the replacement
 # label sits cleanly in its place. Stays left of the 206.8 column divider and
 # clear of the HAZMAT LOCATION row above and NAME row below. (top-origin)
-_LCU_CLEAR_RECT = (80.0, 271.0, 205.0, 288.0)
+_LCU_CLEAR_RECT = (80.0, 272.5, 205.0, 288.0)  # starts below the 271.6 sub-row divider
 
 # Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
 _OVERLAY_COLS = {
