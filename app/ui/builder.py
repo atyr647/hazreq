@@ -63,24 +63,23 @@ class BuilderApp(ttk.Frame):
         hdr.pack(fill="x", pady=(0, 8))
 
         self.hdr_vars: dict[str, tk.StringVar] = {}
-        fields = [
-            ("requestor_name", "Requestor"),
-            ("workcenter", "Workcenter"),
-            ("lpo", "LPO"),
-            ("hazmat_location", "Location"),
-            ("datetime_of_request", "Date/Time"),
+        _BASE_PRESETS = ["Yokose", "LCU Main Base"]
+        fields: list[tuple[str, str, str]] = [
+            ("requestor_name",      "Requestor", "entry"),
+            ("workcenter",          "Workcenter", "entry"),
+            ("lpo",                 "LPO",        "entry"),
+            ("hazmat_location",     "Location",   "entry"),
+            ("base_location",       "Yokose/LCU", "combo"),
+            ("datetime_of_request", "Date/Time",  "entry"),
         ]
-        _LOCATION_PRESETS = ["Yokose", "LCU Main Base"]
-        for col, (key, label) in enumerate(fields):
+        for col, (key, label, kind) in enumerate(fields):
             ttk.Label(hdr, text=label).grid(row=0, column=col, sticky="w", padx=4)
             var = tk.StringVar()
-            if key == "hazmat_location":
-                ent = ttk.Combobox(
-                    hdr, textvariable=var, width=18, values=_LOCATION_PRESETS,
-                )
+            if kind == "combo":
+                ent = ttk.Combobox(hdr, textvariable=var, width=14, values=_BASE_PRESETS)
                 ent.bind("<<ComboboxSelected>>", lambda _e, k=key: self._save_header_field(k))
             else:
-                ent = ttk.Entry(hdr, textvariable=var, width=18)
+                ent = ttk.Entry(hdr, textvariable=var, width=14)
             ent.grid(row=1, column=col, sticky="ew", padx=4)
             # Autosave per field on focus-out — mirrors the web PATCH-on-blur.
             ent.bind("<FocusOut>", lambda _e, k=key: self._save_header_field(k))
@@ -101,6 +100,7 @@ class BuilderApp(ttk.Frame):
                 "workcenter": r.workcenter or "",
                 "lpo": r.lpo or "",
                 "hazmat_location": r.hazmat_location or "",
+                "base_location": r.base_location or "",
                 "datetime_of_request": (
                     r.datetime_of_request.strftime("%Y-%m-%d %H:%M")
                     if r.datetime_of_request

@@ -26,7 +26,7 @@ from app.models import MIP, MRC, SPMIG, HazmatItem, MRCItem, Request, RequestLin
 from app.services import printer as printer_service
 from app.services.pdf import render_request_pdf
 
-HEADER_FIELDS = ("requestor_name", "workcenter", "lpo", "hazmat_location")
+HEADER_FIELDS = ("requestor_name", "workcenter", "lpo", "hazmat_location", "base_location")
 
 
 @contextmanager
@@ -408,6 +408,7 @@ def duplicate_request(s: Session, request_id: int) -> int:
         workcenter=src.workcenter,
         requestor_name=src.requestor_name,
         hazmat_location=src.hazmat_location,
+        base_location=src.base_location,
         source_mip_id=src.source_mip_id,
         source_mrc_id=src.source_mrc_id,
     )

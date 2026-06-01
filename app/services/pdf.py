@@ -53,7 +53,8 @@ class RequestSnapshot:
     name: str
     workcenter: str
     lpo: str
-    location: str
+    location: str        # hazmat_location: free-text (e.g. "Paint Locker")
+    base_location: str   # "Yokose" or "LCU Main Base" — drawn on the LCU row
     datetime: str
     lines: list[LineSnapshot]
 
@@ -73,6 +74,7 @@ def snapshot_from_model(r: ReqModel) -> RequestSnapshot:
         workcenter=(r.workcenter or "").strip(),
         lpo=(r.lpo or "").strip(),
         location=(r.hazmat_location or "").strip(),
+        base_location=(r.base_location or "").strip(),
         # 24h end-to-end on the printed form.
         datetime=when.strftime("%Y-%m-%d %H:%M") if when else "",
         lines=[
@@ -263,7 +265,7 @@ _OVERLAY_HEADER = {
 }
 
 _LCU_LABEL_X = 81.8   # x-start of the "Yokose/LCU Main Base" label (form left margin)
-_LCU_LABEL_Y = 259.3  # baseline — same row as "HAZMAT LOCATION:" on the blank chit
+_LCU_LABEL_Y = 274.4  # baseline — the row where "LCU MAIN BASE" is pre-printed on the form
 
 # Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
 _OVERLAY_COLS = {
@@ -704,12 +706,15 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
     # released) before we enter the bold path or we deadlock.
     reg, bold = _overlay_font(), _overlay_font_bold()
 
-    # Draw "Yokose/LCU Main Base" as the location field label, replacing the
-    # form's "HAZMAT LOCATION:" text. No white-out — drawn directly on the form.
+    # "Yokose/LCU Main Base" label on the LCU row (y=274.4, one line below
+    # HAZMAT LOCATION at 259.3). Drawn directly over the pre-printed
+    # "LCU MAIN BASE" text with no white-out underneath.
+    lcu_y = PAGE_H - (_LCU_LABEL_Y - _HEADER_BASELINE_FIX)
     doc.c.setFont(bold, _HEADER_SIZE)
-    doc.c.drawString(
-        _LCU_LABEL_X, PAGE_H - (_LCU_LABEL_Y - _HEADER_BASELINE_FIX), "Yokose/LCU Main Base"
-    )
+    doc.c.drawString(_LCU_LABEL_X, lcu_y, "Yokose/LCU Main Base")
+    if snap.base_location:
+        doc.c.setFont(reg, _HEADER_SIZE)
+        doc.c.drawString(213.0, lcu_y, snap.base_location)
 
     # Page-1 header values, all left-aligned at x=213.
     doc.c.setFont(reg, _HEADER_SIZE)

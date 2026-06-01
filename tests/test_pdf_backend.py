@@ -30,6 +30,7 @@ def test_docx_backend_fills_snapshot(client):
         workcenter="N43",
         lpo="LPO Smith",
         location="LCU MAIN BASE",
+        base_location="Yokose",
         datetime="2026-05-01 10:30",
         lines=[
             LineSnapshot(spmig="SPMIG-1", nomenclature="Item A", niin="111", qty="2"),
@@ -54,7 +55,7 @@ def test_docx_backend_handles_many_lines(client):
         for i in range(1, 36)
     ]
     snap = RequestSnapshot(
-        id=99, name="N", workcenter="W", lpo="L", location="X",
+        id=99, name="N", workcenter="W", lpo="L", location="X", base_location="",
         datetime="2026-05-01 09:00", lines=lines,
     )
     b = _render_docx_bytes(snap)
@@ -89,7 +90,7 @@ def test_overlay_backend_fills_form_over_blank(client):
     assert settings.overlay_pdf_path.exists(), "blank chit PDF should ship in the repo"
     snap = RequestSnapshot(
         id=1, name="SN J. DOE", workcenter="ENG-2", lpo="PO1 SMITH",
-        location="BLDG 7", datetime="2026-05-29 09:30",
+        location="BLDG 7", base_location="Yokose", datetime="2026-05-29 09:30",
         lines=[
             LineSnapshot(spmig="M0001", nomenclature="CLEANER", niin="001234567", qty="2"),
             LineSnapshot(spmig="G0102", nomenclature="GREASE", niin="034567890", qty="1"),
@@ -112,7 +113,7 @@ def test_overlay_backend_paginates_overflow(client):
         for i in range(40)
     ]
     snap = RequestSnapshot(
-        id=2, name="N", workcenter="W", lpo="L", location="X",
+        id=2, name="N", workcenter="W", lpo="L", location="X", base_location="LCU Main Base",
         datetime="2026-05-29 09:00", lines=lines,
     )
     b = _render_overlay_pdf(snap)
@@ -137,7 +138,7 @@ def test_fillable_pdf_backend_runs(monkeypatch, client):
     importlib.reload(pdf_service)
 
     snap = pdf_service.RequestSnapshot(
-        id=1, name="X", workcenter="W", lpo="L", location="Loc",
+        id=1, name="X", workcenter="W", lpo="L", location="Loc", base_location="",
         datetime="2026-05-01 10:30", lines=[],
     )
     b = pdf_service.render_pdf_bytes(snap)

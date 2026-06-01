@@ -117,6 +117,7 @@ class Request(Base, TimestampMixin):
     workcenter: Mapped[str | None] = mapped_column(String(128))
     requestor_name: Mapped[str | None] = mapped_column(String(128))
     hazmat_location: Mapped[str | None] = mapped_column(String(128))
+    base_location: Mapped[str | None] = mapped_column(String(64))
 
     source_mip_id: Mapped[int | None] = mapped_column(ForeignKey("mip.id", ondelete="SET NULL"))
     source_mrc_id: Mapped[int | None] = mapped_column(ForeignKey("mrc.id", ondelete="SET NULL"))
