@@ -262,10 +262,12 @@ _OVERLAY_HEADER = {
     "lpo": (206.8, 389.1),
 }
 
-# Bounding box (top-origin) of the pre-printed "LCU MAIN BASE" text on the
-# blank chit. Covered with white before drawing the user's chosen location
-# so the pre-printed text never bleeds through.
-_LCU_PREPRINT_RECT = (182.5, 248.0, 551.0, 284.0)
+# White-out box covering the entire location cell's text area (top-origin).
+# Hides both "HAZMAT LOCATION:" label and "LCU MAIN BASE" pre-printed value
+# so the redrawn label + user's chosen value are the only text visible.
+_LCU_PREPRINT_RECT = (79.5, 248.0, 551.0, 284.0)
+_LCU_LABEL_X = 81.8   # x-start of the redrawn location label (matches form margins)
+_LCU_LABEL_Y = 259.3  # baseline — same row as the original "HAZMAT LOCATION:" text
 
 # Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
 _OVERLAY_COLS = {
@@ -701,15 +703,26 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
     wm = _watermark_image(blank_bytes)
     doc = _FlowDoc(wm, blank_bytes)
 
-    # White out the form's pre-printed "LCU MAIN BASE" so the user's location
-    # value is the only text visible in that cell.
+    # Warm up the regular font first — _overlay_font_bold() calls _overlay_font()
+    # inside _FONT_LOCK, so the regular font must be initialised (and its lock
+    # released) before we enter the bold path or we deadlock.
+    reg, bold = _overlay_font(), _overlay_font_bold()
+
+    # White out the entire location cell's text area — covers both the
+    # pre-printed "HAZMAT LOCATION:" label and "LCU MAIN BASE" value.
     lx0, ly0, lx1, ly1 = _LCU_PREPRINT_RECT
     doc.c.setFillColorRGB(1, 1, 1)
     doc.c.rect(lx0, PAGE_H - ly1, lx1 - lx0, ly1 - ly0, fill=1, stroke=0)
     doc.c.setFillColorRGB(0, 0, 0)
+    # Redraw the location row label as "Yokose/LCU Main Base" in bold so the
+    # field title names both options; the user's choice is drawn as the value.
+    doc.c.setFont(bold, _HEADER_SIZE)
+    doc.c.drawString(
+        _LCU_LABEL_X, PAGE_H - (_LCU_LABEL_Y - _HEADER_BASELINE_FIX), "Yokose/LCU Main Base"
+    )
 
-    # Page-1 header values, drawn above the table region on the form.
-    doc.c.setFont(_overlay_font(), _HEADER_SIZE)
+    # Page-1 header values, all left-aligned at x=206.8.
+    doc.c.setFont(reg, _HEADER_SIZE)
     for attr, (vx, baseline) in _OVERLAY_HEADER.items():
         val = getattr(snap, attr, "") or ""
         if val:

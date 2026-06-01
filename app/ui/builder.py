@@ -70,7 +70,7 @@ class BuilderApp(ttk.Frame):
             ("hazmat_location", "Location"),
             ("datetime_of_request", "Date/Time"),
         ]
-        _LOCATION_PRESETS = ["Yokose/LCU Main Base", "LCU Main Base"]
+        _LOCATION_PRESETS = ["Yokose", "LCU Main Base"]
         for col, (key, label) in enumerate(fields):
             ttk.Label(hdr, text=label).grid(row=0, column=col, sticky="w", padx=4)
             var = tk.StringVar()
