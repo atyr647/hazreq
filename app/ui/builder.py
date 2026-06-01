@@ -70,10 +70,17 @@ class BuilderApp(ttk.Frame):
             ("hazmat_location", "Location"),
             ("datetime_of_request", "Date/Time"),
         ]
+        _LOCATION_PRESETS = ["Yokose/LCU Main Base", "LCU Main Base"]
         for col, (key, label) in enumerate(fields):
             ttk.Label(hdr, text=label).grid(row=0, column=col, sticky="w", padx=4)
             var = tk.StringVar()
-            ent = ttk.Entry(hdr, textvariable=var, width=18)
+            if key == "hazmat_location":
+                ent = ttk.Combobox(
+                    hdr, textvariable=var, width=18, values=_LOCATION_PRESETS,
+                )
+                ent.bind("<<ComboboxSelected>>", lambda _e, k=key: self._save_header_field(k))
+            else:
+                ent = ttk.Entry(hdr, textvariable=var, width=18)
             ent.grid(row=1, column=col, sticky="ew", padx=4)
             # Autosave per field on focus-out — mirrors the web PATCH-on-blur.
             ent.bind("<FocusOut>", lambda _e, k=key: self._save_header_field(k))

@@ -251,16 +251,21 @@ def _convert_via_soffice(docx_bytes: bytes) -> bytes:
 
 PAGE_W, PAGE_H = 612.0, 792.0
 
-# attr on RequestSnapshot -> (value_x, label_baseline_y). The baseline is
-# the label's own text baseline (measured from the form), so the value
-# sits on the same line as its label rather than floating in the cell.
+# attr on RequestSnapshot -> (value_x, label_baseline_y). All values are
+# left-aligned at x=206.8 (the start of the NOMENCLATURE column) so every
+# entered value is horizontally flush regardless of label width.
 _OVERLAY_HEADER = {
-    "location": (184.0, 259.3),
-    "name": (122.0, 311.4),
-    "datetime": (151.0, 337.1),
-    "workcenter": (158.0, 363.1),
-    "lpo": (111.0, 389.1),
+    "location": (206.8, 259.3),
+    "name": (206.8, 311.4),
+    "datetime": (206.8, 337.1),
+    "workcenter": (206.8, 363.1),
+    "lpo": (206.8, 389.1),
 }
+
+# Bounding box (top-origin) of the pre-printed "LCU MAIN BASE" text on the
+# blank chit. Covered with white before drawing the user's chosen location
+# so the pre-printed text never bleeds through.
+_LCU_PREPRINT_RECT = (182.5, 248.0, 551.0, 284.0)
 
 # Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
 _OVERLAY_COLS = {
@@ -695,6 +700,13 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
     blank_bytes = Path(src).read_bytes()
     wm = _watermark_image(blank_bytes)
     doc = _FlowDoc(wm, blank_bytes)
+
+    # White out the form's pre-printed "LCU MAIN BASE" so the user's location
+    # value is the only text visible in that cell.
+    lx0, ly0, lx1, ly1 = _LCU_PREPRINT_RECT
+    doc.c.setFillColorRGB(1, 1, 1)
+    doc.c.rect(lx0, PAGE_H - ly1, lx1 - lx0, ly1 - ly0, fill=1, stroke=0)
+    doc.c.setFillColorRGB(0, 0, 0)
 
     # Page-1 header values, drawn above the table region on the form.
     doc.c.setFont(_overlay_font(), _HEADER_SIZE)
