@@ -252,22 +252,18 @@ def _convert_via_soffice(docx_bytes: bytes) -> bytes:
 PAGE_W, PAGE_H = 612.0, 792.0
 
 # attr on RequestSnapshot -> (value_x, label_baseline_y). All values are
-# left-aligned at x=206.8 (the start of the NOMENCLATURE column) so every
-# entered value is horizontally flush regardless of label width.
+# left-aligned at x=213 (≈ one letter-width past the NOMENCLATURE column
+# start at 206.8) so every entered value is horizontally flush.
 _OVERLAY_HEADER = {
-    "location": (206.8, 259.3),
-    "name": (206.8, 311.4),
-    "datetime": (206.8, 337.1),
-    "workcenter": (206.8, 363.1),
-    "lpo": (206.8, 389.1),
+    "location": (213.0, 259.3),
+    "name": (213.0, 311.4),
+    "datetime": (213.0, 337.1),
+    "workcenter": (213.0, 363.1),
+    "lpo": (213.0, 389.1),
 }
 
-# White-out box covering the entire location cell's text area (top-origin).
-# Hides both "HAZMAT LOCATION:" label and "LCU MAIN BASE" pre-printed value
-# so the redrawn label + user's chosen value are the only text visible.
-_LCU_PREPRINT_RECT = (79.5, 248.0, 551.0, 284.0)
-_LCU_LABEL_X = 81.8   # x-start of the redrawn location label (matches form margins)
-_LCU_LABEL_Y = 259.3  # baseline — same row as the original "HAZMAT LOCATION:" text
+_LCU_LABEL_X = 81.8   # x-start of the "Yokose/LCU Main Base" label (form left margin)
+_LCU_LABEL_Y = 259.3  # baseline — same row as "HAZMAT LOCATION:" on the blank chit
 
 # Line-item table column edges (x): SPMIG | NOMENCLATURE | NIIN | QTY
 _OVERLAY_COLS = {
@@ -708,20 +704,14 @@ def _render_overlay_pdf(snap: RequestSnapshot) -> bytes:
     # released) before we enter the bold path or we deadlock.
     reg, bold = _overlay_font(), _overlay_font_bold()
 
-    # White out the entire location cell's text area — covers both the
-    # pre-printed "HAZMAT LOCATION:" label and "LCU MAIN BASE" value.
-    lx0, ly0, lx1, ly1 = _LCU_PREPRINT_RECT
-    doc.c.setFillColorRGB(1, 1, 1)
-    doc.c.rect(lx0, PAGE_H - ly1, lx1 - lx0, ly1 - ly0, fill=1, stroke=0)
-    doc.c.setFillColorRGB(0, 0, 0)
-    # Redraw the location row label as "Yokose/LCU Main Base" in bold so the
-    # field title names both options; the user's choice is drawn as the value.
+    # Draw "Yokose/LCU Main Base" as the location field label, replacing the
+    # form's "HAZMAT LOCATION:" text. No white-out — drawn directly on the form.
     doc.c.setFont(bold, _HEADER_SIZE)
     doc.c.drawString(
         _LCU_LABEL_X, PAGE_H - (_LCU_LABEL_Y - _HEADER_BASELINE_FIX), "Yokose/LCU Main Base"
     )
 
-    # Page-1 header values, all left-aligned at x=206.8.
+    # Page-1 header values, all left-aligned at x=213.
     doc.c.setFont(reg, _HEADER_SIZE)
     for attr, (vx, baseline) in _OVERLAY_HEADER.items():
         val = getattr(snap, attr, "") or ""
