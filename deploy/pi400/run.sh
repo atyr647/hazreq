@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # hazreq — native Tk app launcher for the Raspberry Pi 400 (source path).
 #
-# This is the "runs from source" fallback to the prebuilt AppImage in
-# dist/hazreq-tk-aarch64.AppImage. It works on any arch and any distro:
-# it provisions a local venv, installs the lean dependency set, runs the
-# gated DB migration, and opens the native Tkinter window.
+# This is the supported way to run hazreq on the Pi 400. It works on any
+# arch and any distro: it provisions a local venv against the system Tk,
+# installs the lean dependency set, runs the gated DB migration, and opens
+# the native Tkinter window. (A self-contained AppImage is not shipped —
+# see deploy/pi400/README.md for why.)
 #
 #   bash deploy/pi400/run.sh
 #
