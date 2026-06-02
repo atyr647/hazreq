@@ -41,11 +41,15 @@ sudo apt install python3-tk          # Raspberry Pi OS; Void: xbps-install -S py
 PYTHONPATH=. python scripts/tk_prototype.py
 ```
 
-Or build a self-contained AppImage (bundles Python + Tk, no host Python
-needed) with `deploy/build_tk_appimage.sh`. It uses python-build-standalone
-because, unlike the web AppImage's base, that interpreter ships Tk. The
-data layer is decoupled from FastAPI, so the bundle carries only
-SQLAlchemy + Alembic + docxtpl + pypdf + reportlab.
+On the Pi 400, the supported launcher is **`deploy/pi400/run.sh`** (provisions
+a venv against the system Tk, installs deps, migrates, opens the window). See
+[`deploy/pi400/README.md`](deploy/pi400/README.md).
+
+> A self-contained AppImage (`deploy/build_tk_appimage.sh`) is **not**
+> recommended: the only Tk-bundling interpreter (python-build-standalone)
+> statically links its own libxcb, which collides with Pillow's system libxcb
+> and aborts on X (`xcb_xlib_unknown_seq_number`). Use the system Tk via
+> `run.sh` instead — details in the Pi 400 README.
 
 ## Deployment on a Pi 400 (web UI)
 

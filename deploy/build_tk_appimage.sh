@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # Build a native Tk hazreq AppImage (no web stack).
 #
+# ⚠️  KNOWN ISSUE — the AppImage this produces is UNRELIABLE on real X.
+# python-build-standalone (the only Tk-bundling interpreter) statically links
+# its own libxcb into Tk. reportlab needs Pillow, Pillow links the SYSTEM
+# libxcb, and the two libxcb instances desync X sequence numbers and abort:
+#   xcb_io.c: append_pending_request:
+#       Assertion `!xcb_xlib_unknown_seq_number' failed.
+# Reproduced as system-Tk+Pillow=OK vs PBS-Tk+Pillow=crash. There is no
+# Python-side fix (reportlab won't import without Pillow). USE THE SUPPORTED
+# PATH INSTEAD: deploy/pi400/run.sh, which runs against the distro's own Tk.
+# This script is retained only for reference / future experimentation.
+#
 # Unlike build_appimage.sh (which bundles niess/python-appimage and runs
 # uvicorn + a browser), this packages the native Tkinter app. It uses
 # python-build-standalone (PBS) as the bundled interpreter because, unlike
@@ -129,18 +140,12 @@ else
   fi
 fi
 
-# ----- 3b. De-duplicate libxcb/libXau so Pillow shares the SYSTEM copy ----
-# Pillow's manylinux wheel (pulled in by reportlab) bundles its OWN libxcb
-# and libXau under site-packages/pillow.libs/ with mangled sonames. At
-# import time that loads a SECOND libxcb alongside the one Tk/libX11 use;
-# the two desync XCB sequence numbers and the process aborts at startup:
-#   [xcb] Unknown sequence number while appending request
-#   xcb_io.c: append_pending_request:
-#       Assertion `!xcb_xlib_unknown_seq_number' failed.
-# Repoint Pillow's extension modules at the canonical system sonames and drop
-# the bundled X libs, so the whole process shares ONE libxcb (libxcb's ABI is
-# stable, so the system copy is a drop-in). Needs patchelf (pip-installable;
-# its manylinux wheel ships a static binary that edits ELF of any arch).
+# ----- 3b. (Partial) point Pillow at the system libxcb -------------------
+# NOTE: this does NOT fix the xcb abort described in the file header. The
+# conflicting libxcb is the one PBS links STATICALLY into Tk, which can't be
+# removed; repointing Pillow's bundled copy only collapses Pillow's own
+# duplicate. Kept because it's harmless cleanup, but the AppImage remains
+# unreliable — use deploy/pi400/run.sh. Needs patchelf (pip-installable).
 ensure_patchelf() {
   command -v patchelf 2>/dev/null && return 0
   python3 -m pip install --quiet patchelf >/dev/null 2>&1 || true
