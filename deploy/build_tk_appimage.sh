@@ -110,24 +110,47 @@ if [ "$CROSS" -eq 0 ]; then
 elif command -v "$QEMU" >/dev/null; then
   verify_tk "$QEMU"
 else
-  # Can't execute the target Python; settle for a presence check.
-  ls "$PYHOME"/lib/python${PY_VERSION}/lib-dynload/_tkinter*.so >/dev/null 2>&1 \
-    && echo "==> _tkinter.so present (could not execute target Python to fully verify)" \
-    || { echo "ERROR: no _tkinter.so in the bundle" >&2; exit 1; }
+  # Can't execute the target Python; do a presence check instead. Recent PBS
+  # builds STATICALLY link _tkinter into libpython (lib-dynload has no
+  # _tkinter.so), so checking for that .so gives a false negative. What we
+  # actually need bundled — and can't add later — is the tkinter package plus
+  # the Tcl/Tk script libraries; the C extension rides inside libpython.
+  # (Verified on the same PBS tag's x86_64 build: `import _tkinter` → TK 8.6
+  # despite only 2 .so files in lib-dynload.)
+  PYLIB="$PYHOME/lib/python${PY_VERSION}"
+  if [ -d "$PYLIB/tkinter" ] \
+     && ls -d "$PYHOME"/lib/tk8.* >/dev/null 2>&1 \
+     && { ls "$PYLIB"/lib-dynload/_tkinter*.so >/dev/null 2>&1 \
+          || ls "$PYHOME"/lib/libpython*.so* >/dev/null 2>&1; }; then
+    echo "==> Tk runtime present (tkinter pkg + tk8.x libs; _tkinter linked into libpython)"
+  else
+    echo "ERROR: the bundled Python is missing Tk (no tkinter pkg / tk8.x libs)." >&2
+    exit 1
+  fi
 fi
 
 # ----- 4. Bundle the application source + the blank chit -----------
 APP_DEST="$APPDIR/opt/hazreq"
 mkdir -p "$APP_DEST"
-rsync -a --delete \
-  --exclude='.venv*' --exclude='build-appimage' --exclude='build-tk-appimage' \
-  --exclude='dist' --exclude='data/hazreq.db*' --exclude='data/pdfs' \
-  --exclude='data/backups' --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
-  "$REPO_ROOT/app" "$REPO_ROOT/scripts" "$REPO_ROOT/data" \
-  "$REPO_ROOT/alembic.ini" "$REPO_ROOT/pyproject.toml" \
-  "$REPO_ROOT/Hazmat Request Blank.pdf" \
-  "$REPO_ROOT/BLANK NEW HAZMAT ISSUE CHIT 2.0.docx" \
-  "$APP_DEST/"
+SRC_ITEMS=(
+  "app" "scripts" "data" "alembic.ini" "pyproject.toml"
+  "Hazmat Request Blank.pdf" "BLANK NEW HAZMAT ISSUE CHIT 2.0.docx"
+)
+if command -v rsync >/dev/null; then
+  rsync -a --delete \
+    --exclude='.venv*' --exclude='build-appimage' --exclude='build-tk-appimage' \
+    --exclude='dist' --exclude='data/hazreq.db*' --exclude='data/pdfs' \
+    --exclude='data/backups' --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+    "${SRC_ITEMS[@]/#/$REPO_ROOT/}" "$APP_DEST/"
+else
+  # rsync-less fallback: plain copy, then prune the junk rsync would exclude.
+  echo "==> rsync not found; copying with cp + prune"
+  for item in "${SRC_ITEMS[@]}"; do cp -a "$REPO_ROOT/$item" "$APP_DEST/"; done
+  rm -rf "$APP_DEST/data/hazreq.db" "$APP_DEST/data/hazreq.db-wal" \
+         "$APP_DEST/data/hazreq.db-shm" "$APP_DEST/data/pdfs" "$APP_DEST/data/backups"
+  find "$APP_DEST" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$APP_DEST" -name '*.pyc' -delete 2>/dev/null || true
+fi
 
 # ----- 5. Write the launcher (AppRun) ------------------------------
 cat > "$APPDIR/AppRun" <<'APPRUN'
@@ -186,7 +209,9 @@ if [ ! -x "$TOOL" ]; then
 fi
 
 OUT="$DIST/hazreq-tk-${APPIMG_ARCH}.AppImage"
-ARCH="${APPIMG_ARCH}" "$TOOL" --no-appstream "$APPDIR" "$OUT"
+# APPIMAGE_EXTRACT_AND_RUN lets appimagetool run where FUSE is unavailable
+# (containers / minimal hosts) by self-extracting instead of mounting.
+ARCH="${APPIMG_ARCH}" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --no-appstream "$APPDIR" "$OUT"
 
 echo
 echo "==> Built $(du -h "$OUT" | cut -f1) AppImage at: $OUT"
