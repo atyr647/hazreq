@@ -129,6 +129,54 @@ else
   fi
 fi
 
+# ----- 3b. De-duplicate libxcb/libXau so Pillow shares the SYSTEM copy ----
+# Pillow's manylinux wheel (pulled in by reportlab) bundles its OWN libxcb
+# and libXau under site-packages/pillow.libs/ with mangled sonames. At
+# import time that loads a SECOND libxcb alongside the one Tk/libX11 use;
+# the two desync XCB sequence numbers and the process aborts at startup:
+#   [xcb] Unknown sequence number while appending request
+#   xcb_io.c: append_pending_request:
+#       Assertion `!xcb_xlib_unknown_seq_number' failed.
+# Repoint Pillow's extension modules at the canonical system sonames and drop
+# the bundled X libs, so the whole process shares ONE libxcb (libxcb's ABI is
+# stable, so the system copy is a drop-in). Needs patchelf (pip-installable;
+# its manylinux wheel ships a static binary that edits ELF of any arch).
+ensure_patchelf() {
+  command -v patchelf 2>/dev/null && return 0
+  python3 -m pip install --quiet patchelf >/dev/null 2>&1 || true
+  command -v patchelf 2>/dev/null && return 0
+  local scripts; scripts="$(python3 -c 'import sysconfig;print(sysconfig.get_path("scripts"))' 2>/dev/null || true)"
+  for p in "$scripts/patchelf" "$HOME/.local/bin/patchelf"; do
+    [ -x "$p" ] && { echo "$p"; return 0; }
+  done
+  return 1
+}
+PILLOW_LIBS="$SITE/pillow.libs"
+if [ -d "$PILLOW_LIBS" ]; then
+  if PATCHELF="$(ensure_patchelf)"; then
+    echo "==> De-duplicating libxcb/libXau (Pillow -> system copies) with $PATCHELF"
+    while IFS= read -r bundled; do
+      base="$(basename "$bundled")"
+      case "$base" in
+        libxcb-*) sys="libxcb.so.1" ;;
+        libXau-*) sys="libXau.so.6" ;;
+        *) continue ;;
+      esac
+      for so in "$SITE"/PIL/*.so; do
+        [ -e "$so" ] || continue
+        if "$PATCHELF" --print-needed "$so" 2>/dev/null | grep -qF "$base"; then
+          "$PATCHELF" --replace-needed "$base" "$sys" "$so"
+          echo "    repointed $(basename "$so"): $base -> $sys"
+        fi
+      done
+      rm -f "$bundled"
+    done < <(find "$PILLOW_LIBS" \( -name 'libxcb-*.so*' -o -name 'libXau-*.so*' \))
+  else
+    echo "WARNING: patchelf unavailable — cannot de-dupe Pillow's libxcb." >&2
+    echo "         The app may abort on X startup (xcb_xlib_unknown_seq_number)." >&2
+  fi
+fi
+
 # ----- 4. Bundle the application source + the blank chit -----------
 APP_DEST="$APPDIR/opt/hazreq"
 mkdir -p "$APP_DEST"
