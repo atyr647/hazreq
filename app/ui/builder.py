@@ -20,6 +20,7 @@ Layout:
 from __future__ import annotations
 
 import contextlib
+import queue
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -463,24 +464,39 @@ class BuilderApp(ttk.Frame):
         self.set_status(f"Sent to printer ({job}).")
 
     def _finalize(self) -> None:
-        # PDF generation can take seconds (LibreOffice). Run off the UI
-        # thread so the window stays responsive — and so we can feel
-        # whether that responsiveness holds on the Pi.
+        # PDF render runs off the UI thread so the window stays responsive.
+        # CRITICAL: Tkinter is NOT thread-safe — calling ANY Tk method
+        # (including .after) from the worker corrupts the X11/XCB connection
+        # and aborts the process ("xcb_xlib_unknown_seq_number" assertion).
+        # So the worker only ever touches a thread-safe queue; every Tk call
+        # stays on the main thread, which polls the queue via .after().
         self.finalize_btn.configure(state="disabled")
         self.set_status("Generating PDF…")
+
+        result_q: queue.Queue[tuple[str, object]] = queue.Queue(maxsize=1)
 
         def work():
             try:
                 with repo.session_scope() as s:
                     path = repo.finalize(s, self.request_id)
-                self.after(0, lambda: self._finalize_done(path))
+                result_q.put(("ok", path))
             except Exception as e:  # noqa: BLE001
-                # Bind the message now — `e` is unbound once the except
-                # block exits, and this lambda runs later via after().
-                msg = str(e)
-                self.after(0, lambda: self._finalize_failed(msg))
+                result_q.put(("err", str(e)))
 
         threading.Thread(target=work, daemon=True).start()
+        self._poll_finalize(result_q)
+
+    def _poll_finalize(self, result_q: "queue.Queue[tuple[str, object]]") -> None:
+        """Main-thread poll of the finalize worker's result queue."""
+        try:
+            kind, payload = result_q.get_nowait()
+        except queue.Empty:
+            self.after(50, lambda: self._poll_finalize(result_q))
+            return
+        if kind == "ok":
+            self._finalize_done(payload)
+        else:
+            self._finalize_failed(str(payload))
 
     def _finalize_done(self, path) -> None:
         self.finalize_btn.configure(state="normal")
