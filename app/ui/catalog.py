@@ -65,8 +65,11 @@ class CatalogScreen(ttk.Frame):
         ttk.Button(b, text="Edit", command=self._edit_mip_node).pack(side="left")
         ttk.Button(b, text="Delete", command=self._delete_mip_node).pack(side="left", padx=4)
 
-        # Right: items linked to the selected MRC
-        right = ttk.LabelFrame(pane, text="Items on selected MRC", padding=6)
+        # Right: items linked to the selected MRC (one default per SPMIG —
+        # loading the MRC adds one line each; full editing is in the MRC dialog)
+        right = ttk.LabelFrame(
+            pane, text="Items this MRC loads (one default per SPMIG)", padding=6
+        )
         pane.add(right, weight=2)
         self.link_tree = ttk.Treeview(
             right, columns=("spmig", "niin"), show="tree headings", selectmode="browse"
@@ -199,15 +202,10 @@ class CatalogScreen(ttk.Frame):
             self._set_status("Select a MIP (or one of its MRCs) first.", error=True)
             return
         mip_id = node[1] if node[0] == "mip" else self._mrc_parent.get(node[1])
-        vals = _FormDialog(self, "New MRC", [("code", "Code", ""),
-                                             ("periodicity", "Periodicity", ""),
-                                             ("description", "Description", "")]).show()
-        if vals is None:
-            return
-        self._run(
-            lambda s: cat.create_mrc(s, mip_id, vals["code"], vals["periodicity"], vals["description"]),
-            "MRC created.",
-        )
+        editor = _MrcEditor(self, mip_id)
+        if editor.show() is not None:
+            self.refresh()
+            self._set_status("MRC saved.")
 
     def _edit_mip_node(self) -> None:
         node = self._selected_mip_node()
@@ -225,17 +223,11 @@ class CatalogScreen(ttk.Frame):
             self._run(lambda s: cat.update_mip(s, _id, vals["code"], vals["title"], vals["notes"]),
                       "MIP updated.")
         else:
-            with repo.session_scope() as s:
-                cur = cat.get_mrc(s, _id)
-            vals = _FormDialog(self, "Edit MRC", [("code", "Code", cur["code"]),
-                                                  ("periodicity", "Periodicity", cur["periodicity"]),
-                                                  ("description", "Description", cur["description"])]).show()
-            if vals is None:
-                return
-            self._run(
-                lambda s: cat.update_mrc(s, _id, vals["code"], vals["periodicity"], vals["description"]),
-                "MRC updated.",
-            )
+            mip_id = self._mrc_parent.get(_id)
+            editor = _MrcEditor(self, mip_id, mrc_id=_id)
+            if editor.show() is not None:
+                self.refresh()
+                self._set_status("MRC updated.")
 
     def _delete_mip_node(self) -> None:
         node = self._selected_mip_node()
@@ -257,8 +249,21 @@ class CatalogScreen(ttk.Frame):
         item_id = _ItemPicker(self).show()
         if item_id is None:
             return
-        self._run(lambda s: cat.add_mrc_item(s, mrc_id, item_id), "Item linked.",
-                  after=lambda: self._reload_links(mrc_id))
+        replaced: list[str] = []
+
+        def op(s):
+            nonlocal replaced
+            replaced = cat.set_mrc_default(s, mrc_id, item_id)
+
+        # ok_msg="" so the after-callback's status (which depends on whether a
+        # same-SPMIG default was replaced) isn't clobbered by _run.
+        self._run(op, "", after=lambda: (
+            self._reload_links(mrc_id),
+            self._set_status(
+                f"Replaced {', '.join(replaced)} as the SPMIG default for this MRC."
+                if replaced else "Item linked."
+            ),
+        ))
 
     def _remove_link(self) -> None:
         mrc_id = self._current_mrc_id()
@@ -454,6 +459,263 @@ class _ItemPicker(tk.Toplevel):
         sel = self.listbox.curselection()
         if sel:
             self.result = self._ids[sel[0]]
+        self.destroy()
+
+    def show(self) -> int | None:
+        self.wait_window()
+        return self.result
+
+
+class _NewItemDialog(tk.Toplevel):
+    """Create a brand-new hazmat item (in an existing or new SPMIG) and
+    return its id. Persists immediately — a genuine catalog addition that
+    stands on its own even if the surrounding MRC edit is cancelled."""
+
+    def __init__(self, master) -> None:
+        super().__init__(master)
+        self.title("New hazmat item")
+        self.transient(master.winfo_toplevel())
+        self.resizable(False, False)
+        self.result_id: int | None = None
+        with repo.session_scope() as s:
+            self._spmigs = [(sp.id, sp.code, sp.description) for sp in cat.spmig_tree(s)]
+
+        row = 0
+        ttk.Label(self, text="SPMIG").grid(row=row, column=0, sticky="e", padx=6, pady=4)
+        self._sp_var = tk.StringVar()
+        choices = ["+ New SPMIG…"] + [
+            f"{code} — {desc}" if desc else code for (_id, code, desc) in self._spmigs
+        ]
+        self._sp_combo = ttk.Combobox(
+            self, textvariable=self._sp_var, values=choices, state="readonly", width=40
+        )
+        self._sp_combo.current(1 if self._spmigs else 0)
+        self._sp_combo.grid(row=row, column=1, padx=6, pady=4, sticky="w")
+        self._sp_combo.bind("<<ComboboxSelected>>", lambda _e: self._toggle_new_spmig())
+
+        row += 1
+        self._new_sp_code = tk.StringVar()
+        self._new_sp_desc = tk.StringVar()
+        ttk.Label(self, text="New SPMIG code").grid(row=row, column=0, sticky="e", padx=6, pady=4)
+        self._sp_code_ent = ttk.Entry(self, textvariable=self._new_sp_code, width=42)
+        self._sp_code_ent.grid(row=row, column=1, padx=6, pady=4, sticky="w")
+        row += 1
+        ttk.Label(self, text="New SPMIG desc").grid(row=row, column=0, sticky="e", padx=6, pady=4)
+        self._sp_desc_ent = ttk.Entry(self, textvariable=self._new_sp_desc, width=42)
+        self._sp_desc_ent.grid(row=row, column=1, padx=6, pady=4, sticky="w")
+
+        row += 1
+        self._vars: dict[str, tk.StringVar] = {}
+        for key, label in [("nomenclature", "Nomenclature"), ("niin", "NIIN"),
+                           ("unit_of_issue", "Unit of issue")]:
+            ttk.Label(self, text=label).grid(row=row, column=0, sticky="e", padx=6, pady=4)
+            var = tk.StringVar()
+            ttk.Entry(self, textvariable=var, width=42).grid(row=row, column=1, padx=6, pady=4, sticky="w")
+            self._vars[key] = var
+            row += 1
+
+        btns = ttk.Frame(self)
+        btns.grid(row=row, column=0, columnspan=2, pady=8)
+        ttk.Button(btns, text="Create", command=self._ok).pack(side="left", padx=4)
+        ttk.Button(btns, text="Cancel", command=self.destroy).pack(side="left", padx=4)
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self._toggle_new_spmig()
+        self.grab_set()
+
+    def _toggle_new_spmig(self) -> None:
+        new = self._sp_combo.current() == 0
+        state = "normal" if new else "disabled"
+        self._sp_code_ent.configure(state=state)
+        self._sp_desc_ent.configure(state=state)
+
+    def _ok(self) -> None:
+        try:
+            with repo.session_scope() as s:
+                if self._sp_combo.current() == 0:
+                    spmig_id = cat.create_spmig(
+                        s, self._new_sp_code.get(), self._new_sp_desc.get()
+                    )
+                else:
+                    spmig_id = self._spmigs[self._sp_combo.current() - 1][0]
+                self.result_id = cat.create_item(
+                    s, spmig_id, self._vars["nomenclature"].get(),
+                    self._vars["niin"].get(), self._vars["unit_of_issue"].get(),
+                )
+        except cat.CatalogError as e:
+            messagebox.showerror("Cannot create", str(e), parent=self)
+            return
+        self.destroy()
+
+    def show(self) -> int | None:
+        self.wait_window()
+        return self.result_id
+
+
+class _MrcEditor(tk.Toplevel):
+    """Create or edit an MRC together with the catalog items it loads.
+
+    The item list holds at most one default per SPMIG (loading the MRC into a
+    request then adds one line per SPMIG; the operator can Swap to the SPMIG's
+    other items). Items can be picked from the catalog or created inline.
+    Nothing is written until Save.
+    """
+
+    def __init__(self, master, mip_id: int, mrc_id: int | None = None) -> None:
+        super().__init__(master)
+        self.title("Edit MRC" if mrc_id else "New MRC")
+        self.transient(master.winfo_toplevel())
+        self.mip_id = mip_id
+        self.mrc_id = mrc_id
+        self.result: int | None = None
+        self._items: list[cat.LinkedItem] = []
+
+        frm = ttk.Frame(self, padding=8)
+        frm.grid(row=0, column=0, sticky="ew")
+        self._vars: dict[str, tk.StringVar] = {}
+        for r, (key, label) in enumerate(
+            [("code", "Code"), ("periodicity", "Periodicity"), ("description", "Description")]
+        ):
+            ttk.Label(frm, text=label).grid(row=r, column=0, sticky="e", padx=6, pady=3)
+            var = tk.StringVar()
+            ent = ttk.Entry(frm, textvariable=var, width=46)
+            ent.grid(row=r, column=1, padx=6, pady=3, sticky="we")
+            self._vars[key] = var
+            if r == 0:
+                ent.focus_set()
+
+        box = ttk.LabelFrame(
+            self, text="Items this MRC loads (one default per SPMIG)", padding=8
+        )
+        box.grid(row=1, column=0, sticky="nsew", padx=8)
+        self.tree = ttk.Treeview(
+            box, columns=("item", "niin"), show="tree headings", height=9, selectmode="browse"
+        )
+        self.tree.heading("#0", text="SPMIG")
+        self.tree.heading("item", text="Default item")
+        self.tree.heading("niin", text="NIIN")
+        self.tree.column("#0", width=90)
+        self.tree.column("item", width=320)
+        self.tree.column("niin", width=90, anchor="center")
+        self.tree.pack(fill="both", expand=True)
+
+        bb = ttk.Frame(box)
+        bb.pack(fill="x", pady=(6, 0))
+        ttk.Button(bb, text="Add from catalog…", command=self._add_from_catalog).pack(side="left")
+        ttk.Button(bb, text="New item…", command=self._new_item).pack(side="left", padx=4)
+        ttk.Button(bb, text="Remove", command=self._remove).pack(side="left")
+        ttk.Button(bb, text="↑", width=3, command=lambda: self._move(-1)).pack(side="left", padx=(4, 0))
+        ttk.Button(bb, text="↓", width=3, command=lambda: self._move(1)).pack(side="left", padx=4)
+
+        self.status = ttk.Label(self, text="", anchor="w", foreground="#b00020")
+        self.status.grid(row=2, column=0, sticky="ew", padx=8)
+
+        foot = ttk.Frame(self, padding=8)
+        foot.grid(row=3, column=0, sticky="e")
+        ttk.Button(foot, text="Save", command=self._save).pack(side="left", padx=4)
+        ttk.Button(foot, text="Cancel", command=self.destroy).pack(side="left", padx=4)
+
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+        frm.columnconfigure(1, weight=1)
+
+        if mrc_id is not None:
+            self._load_existing()
+        self._refresh_tree()
+        self.bind("<Escape>", lambda _e: self.destroy())
+        self.grab_set()
+
+    def _load_existing(self) -> None:
+        with repo.session_scope() as s:
+            cur = cat.get_mrc(s, self.mrc_id)
+            self._items = list(cat.mrc_items(s, self.mrc_id))
+        self._vars["code"].set(cur["code"])
+        self._vars["periodicity"].set(cur["periodicity"])
+        self._vars["description"].set(cur["description"])
+
+    def _refresh_tree(self) -> None:
+        self.tree.delete(*self.tree.get_children())
+        for it in self._items:
+            self.tree.insert(
+                "", "end", iid=str(it.id), text=it.spmig_code,
+                values=(it.nomenclature, it.niin),
+            )
+
+    def _put(self, brief: "cat.LinkedItem") -> None:
+        """Add/replace, keeping one item per SPMIG (the default)."""
+        replaced = [b.nomenclature for b in self._items
+                    if b.spmig_id == brief.spmig_id and b.id != brief.id]
+        self._items = [b for b in self._items if b.spmig_id != brief.spmig_id]
+        self._items.append(brief)
+        self._refresh_tree()
+        self.tree.selection_set(str(brief.id))
+        self.status.configure(
+            text=(f"Default for SPMIG {brief.spmig_code} → {brief.nomenclature} "
+                  f"(was {', '.join(replaced)})." if replaced else "")
+        )
+
+    def _add_from_catalog(self) -> None:
+        item_id = _ItemPicker(self).show()
+        if item_id is None:
+            return
+        with repo.session_scope() as s:
+            brief = cat.item_brief(s, item_id)
+        self._put(brief)
+
+    def _new_item(self) -> None:
+        new_id = _NewItemDialog(self).show()
+        if new_id is None:
+            return
+        with repo.session_scope() as s:
+            brief = cat.item_brief(s, new_id)
+        self._put(brief)
+
+    def _remove(self) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        rid = int(sel[0])
+        self._items = [b for b in self._items if b.id != rid]
+        self._refresh_tree()
+
+    def _move(self, delta: int) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        rid = int(sel[0])
+        idx = next((i for i, b in enumerate(self._items) if b.id == rid), None)
+        if idx is None:
+            return
+        j = idx + delta
+        if 0 <= j < len(self._items):
+            self._items[idx], self._items[j] = self._items[j], self._items[idx]
+            self._refresh_tree()
+            self.tree.selection_set(str(rid))
+
+    def _save(self) -> None:
+        code = self._vars["code"].get().strip()
+        if not code:
+            self.status.configure(text="Code is required.")
+            return
+        try:
+            with repo.session_scope() as s:
+                if self.mrc_id is None:
+                    self.mrc_id = cat.create_mrc(
+                        s, self.mip_id, code,
+                        self._vars["periodicity"].get(), self._vars["description"].get(),
+                    )
+                else:
+                    cat.update_mrc(
+                        s, self.mrc_id, code,
+                        self._vars["periodicity"].get(), self._vars["description"].get(),
+                    )
+                cat.sync_mrc_items(s, self.mrc_id, [b.id for b in self._items])
+        except cat.CatalogError as e:
+            self.status.configure(text=str(e))
+            return
+        except Exception as e:  # noqa: BLE001
+            self.status.configure(text=f"Save failed: {e}")
+            return
+        self.result = self.mrc_id
         self.destroy()
 
     def show(self) -> int | None:

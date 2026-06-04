@@ -249,25 +249,52 @@ def _drive_catalog(app, pump) -> None:
     c.refresh()
     pump()
     c.mip_tree.selection_set(f"mip:{mid}")
-    catmod._FormDialog = show_dialog({"code": "DRV-MRC", "periodicity": "M", "description": "d"})
-    c._new_mrc()
+    # Drive the real integrated MRC editor: set fields, link an item, save.
+    with repo.session_scope() as s:
+        grease = repo.search_items(s, "grease")[0]
+        pick_item, grease_sp = grease.id, grease.spmig_id
+    ed = catmod._MrcEditor(c, mid)
+    ed._vars["code"].set("DRV-MRC")
+    ed._vars["periodicity"].set("M")
+    ed._vars["description"].set("d")
+    with repo.session_scope() as s:
+        ed._put(cr.item_brief(s, pick_item))
+    ed._save()
     pump()
     with repo.session_scope() as s:
         m = next(m for m in cr.mip_tree(s) if m.code == "DRV-MIP")
         check("catalog.create_mrc", "DRV-MRC" in [mr.code for mr in m.mrcs])
         mrc_id = next(mr.id for mr in m.mrcs if mr.code == "DRV-MRC")
-        pick_item = repo.search_items(s, "grease")[0].id
+        check("catalog.mrc_editor_links_item",
+              pick_item in [li.id for li in cr.mrc_items(s, mrc_id)])
 
+    # Side-panel add of an item from a *different* SPMIG → 2nd default kept.
     c.refresh()
     pump()
     c.mip_tree.selection_set(f"mrc:{mrc_id}")
     c._on_mip_select()
     pump()
-    catmod._ItemPicker = show_dialog(pick_item)
+    with repo.session_scope() as s:
+        other_id = next(i.id for i in repo.search_items(s, "") if i.spmig_id != grease_sp)
+    catmod._ItemPicker = show_dialog(other_id)
     c._add_link()
     pump()
     with repo.session_scope() as s:
-        check("catalog.add_mrc_link", pick_item in [li.id for li in cr.mrc_items(s, mrc_id)])
+        ids_now = [li.id for li in cr.mrc_items(s, mrc_id)]
+        check("catalog.add_mrc_link", other_id in ids_now and pick_item in ids_now)
+
+    # Adding another item from the SAME SPMIG as grease replaces it (one
+    # default per SPMIG) rather than piling up a second line.
+    with repo.session_scope() as s:
+        grease_alt = next(i.id for i in repo.search_items(s, "")
+                          if i.spmig_id == grease_sp and i.id != pick_item)
+    catmod._ItemPicker = show_dialog(grease_alt)
+    c._add_link()
+    pump()
+    with repo.session_scope() as s:
+        ids_now = [li.id for li in cr.mrc_items(s, mrc_id)]
+        check("catalog.default_per_spmig",
+              grease_alt in ids_now and pick_item not in ids_now and other_id in ids_now)
 
     with repo.session_scope() as s:
         sp_with_items = next(sp.id for sp in cr.spmig_tree(s) if sp.items)

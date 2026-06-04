@@ -101,6 +101,47 @@ def test_mrc_item_link_dedup_reorder_remove(session):
         assert items[0] not in [li.id for li in cat.mrc_items(s, mrc)]
 
 
+def test_set_mrc_default_one_per_spmig(session):
+    """set_mrc_default keeps at most one item per SPMIG on an MRC: an exact
+    duplicate is rejected, a new SPMIG appends, and a different item from a
+    SPMIG already present replaces that SPMIG's default."""
+    with repo.session_scope() as s:
+        ids = _build_catalog(s)  # SP1 has i1,i2,i3; mrc links i1,i2 (both SP1)
+        mrc, items = ids["mrc"], ids["items"]
+        sp2 = cat.create_spmig(s, "SP2", "paints")
+        j1 = cat.create_item(s, sp2, "PRIMER", "444444444", "KT")
+
+    with pytest.raises(cat.CatalogError, match="already attached"), repo.session_scope() as s:
+        cat.set_mrc_default(s, mrc, items[0])
+
+    with repo.session_scope() as s:
+        assert cat.set_mrc_default(s, mrc, j1) == []  # different SPMIG → appended
+
+    with repo.session_scope() as s:
+        replaced = cat.set_mrc_default(s, mrc, items[2])  # SP1 again → replaces
+        assert set(replaced) == {"CLEANER A", "CLEANER B"}
+
+    with repo.session_scope() as s:
+        now = [li.id for li in cat.mrc_items(s, mrc)]
+        assert items[2] in now and j1 in now
+        assert items[0] not in now and items[1] not in now
+        assert len(now) == 2  # one per SPMIG
+
+
+def test_sync_mrc_items_diffs_and_orders(session):
+    with repo.session_scope() as s:
+        ids = _build_catalog(s)  # mrc links i1,i2 in order
+        mrc, items = ids["mrc"], ids["items"]
+    with repo.session_scope() as s:
+        # drop i2, add i3, and put i3 before i1
+        cat.sync_mrc_items(s, mrc, [items[2], items[0]])
+    with repo.session_scope() as s:
+        assert [li.id for li in cat.mrc_items(s, mrc)] == [items[2], items[0]]
+    with repo.session_scope() as s:
+        brief = cat.item_brief(s, items[0])
+        assert brief.id == items[0] and brief.spmig_code == "SP1"
+
+
 def test_delete_guards_and_cascade(session):
     with repo.session_scope() as s:
         ids = _build_catalog(s)

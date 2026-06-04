@@ -61,6 +61,7 @@ class SpmigNode:
 @dataclass(frozen=True)
 class LinkedItem:
     id: int
+    spmig_id: int
     spmig_code: str
     nomenclature: str
     niin: str
@@ -204,12 +205,102 @@ def mrc_items(s: Session, mrc_id: int) -> list[LinkedItem]:
         out.append(
             LinkedItem(
                 id=it.id,
+                spmig_id=it.spmig_id,
                 spmig_code=it.spmig.code if it.spmig else "",
                 nomenclature=it.nomenclature,
                 niin=it.niin or "",
             )
         )
     return out
+
+
+def item_brief(s: Session, item_id: int) -> LinkedItem:
+    """One hazmat item as a LinkedItem (with its SPMIG), for the MRC editor's
+    in-memory buffer."""
+    it = s.execute(
+        select(HazmatItem)
+        .options(selectinload(HazmatItem.spmig))
+        .where(HazmatItem.id == item_id)
+    ).scalar_one_or_none()
+    if it is None:
+        raise CatalogError("Item not found")
+    return LinkedItem(
+        id=it.id,
+        spmig_id=it.spmig_id,
+        spmig_code=it.spmig.code if it.spmig else "",
+        nomenclature=it.nomenclature,
+        niin=it.niin or "",
+    )
+
+
+def set_mrc_default(s: Session, mrc_id: int, item_id: int) -> list[str]:
+    """Make `item_id` this MRC's default for its SPMIG. An MRC carries at
+    most one item per SPMIG (loading the MRC then adds one line per SPMIG;
+    operators reach the SPMIG's other items via Swap). If a different item
+    from the same SPMIG is already linked, it is replaced in place and its
+    nomenclature(s) returned so the caller can report the change.
+    """
+    if not s.get(MRC, mrc_id):
+        raise CatalogError("MRC not found")
+    it = s.get(HazmatItem, item_id)
+    if not it:
+        raise CatalogError("Hazmat item not found")
+    if s.get(MRCItem, {"mrc_id": mrc_id, "hazmat_item_id": item_id}):
+        raise CatalogError("Item already attached to this MRC")
+    same_spmig = list(
+        s.execute(
+            select(MRCItem)
+            .join(HazmatItem, MRCItem.hazmat_item_id == HazmatItem.id)
+            .options(selectinload(MRCItem.hazmat_item))
+            .where(MRCItem.mrc_id == mrc_id, HazmatItem.spmig_id == it.spmig_id)
+        ).scalars().all()
+    )
+    if same_spmig:
+        slot = min(lk.sort_order for lk in same_spmig)
+        replaced = [lk.hazmat_item.nomenclature for lk in same_spmig if lk.hazmat_item]
+        for lk in same_spmig:
+            s.delete(lk)
+        s.flush()
+        s.add(MRCItem(mrc_id=mrc_id, hazmat_item_id=item_id, sort_order=slot))
+        s.flush()
+        return replaced
+    last = s.scalar(
+        select(MRCItem.sort_order)
+        .where(MRCItem.mrc_id == mrc_id)
+        .order_by(MRCItem.sort_order.desc())
+    )
+    s.add(MRCItem(mrc_id=mrc_id, hazmat_item_id=item_id, sort_order=(last or 0) + 10))
+    s.flush()
+    return []
+
+
+def sync_mrc_items(s: Session, mrc_id: int, ordered_item_ids: list[int]) -> None:
+    """Make the MRC's links exactly `ordered_item_ids`, in that order. Adds
+    missing links, drops removed ones, and renumbers sort_order — a diff (not
+    a delete-all-readd) so the audit log only records real changes. Callers
+    are responsible for the one-item-per-SPMIG invariant (the editor enforces
+    it as items are chosen)."""
+    if not s.get(MRC, mrc_id):
+        raise CatalogError("MRC not found")
+    existing = {
+        lk.hazmat_item_id: lk
+        for lk in s.execute(
+            select(MRCItem).where(MRCItem.mrc_id == mrc_id)
+        ).scalars().all()
+    }
+    desired = list(dict.fromkeys(ordered_item_ids))  # de-dup, keep order
+    for item_id, lk in list(existing.items()):
+        if item_id not in desired:
+            s.delete(lk)
+    s.flush()
+    for idx, item_id in enumerate(desired):
+        order = (idx + 1) * 10
+        lk = existing.get(item_id)
+        if lk is not None:
+            lk.sort_order = order
+        else:
+            s.add(MRCItem(mrc_id=mrc_id, hazmat_item_id=item_id, sort_order=order))
+    s.flush()
 
 
 def add_mrc_item(s: Session, mrc_id: int, item_id: int) -> None:
