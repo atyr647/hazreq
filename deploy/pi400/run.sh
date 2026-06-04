@@ -46,8 +46,12 @@ source "$VENV/bin/activate"
 STAMP="$VENV/.deps-installed"
 if [ ! -f "$STAMP" ]; then
   echo "==> Installing dependencies (one time)"
-  python -m pip install --quiet --upgrade pip
-  python -m pip install --quiet \
+  # --no-cache-dir: skip pip's on-disk HTTP cache. On ephemeral / re-imaged
+  # systems a leftover cache from a different pip version triggers the noisy
+  # "Cache entry deserialization failed, entry ignored" warning; bypassing it
+  # is both quieter and correct here (nothing to reuse on a fresh boot).
+  python -m pip install --quiet --no-cache-dir --upgrade pip
+  python -m pip install --quiet --no-cache-dir \
     'sqlalchemy>=2.0' 'alembic>=1.13' 'docxtpl>=0.18' 'pypdf>=4.3' 'reportlab>=4.0'
   touch "$STAMP"
 fi

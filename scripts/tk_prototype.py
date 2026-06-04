@@ -9,9 +9,11 @@ What it does, in order:
      is actually behind head (the gated-migration approach; a no-op run
      on an up-to-date DB is what makes native startup feel instant vs.
      the current "migrate on every launch").
-  2. Seeds a small sample catalog if the catalog is empty, so there is
-     something to search. No-op once real data exists.
-  3. Opens the app shell (History + New Request).
+  2. Opens the app shell (History + New Request) against an empty catalog.
+
+The catalog starts empty. Set HAZREQ_SEED_SAMPLE=1 to populate a small
+sample catalog on first run (developer/demo convenience only) — by default
+nothing is pre-filled, so deleting catalog rows sticks across relaunches.
 
 Requires Tk (python3-tk / python3-tkinter on the host) and a display.
 
@@ -62,10 +64,13 @@ def ensure_migrated() -> None:
 def main() -> int:
     ensure_migrated()
 
-    from app.ui import seed
+    # Catalog stays empty unless explicitly asked to seed sample data. This
+    # keeps fresh installs clean and means deleted rows don't reappear.
+    if os.environ.get("HAZREQ_SEED_SAMPLE") == "1":
+        from app.ui import seed
 
-    if seed.seed_if_empty():
-        print("Seeded sample catalog (first run).")
+        if seed.seed_if_empty():
+            print("Seeded sample catalog (HAZREQ_SEED_SAMPLE=1).")
 
     try:
         import tkinter  # noqa: F401
