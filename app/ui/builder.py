@@ -137,6 +137,11 @@ class BuilderApp(ttk.Frame):
         self.item_search = self._make_search_tab(
             nb, "Items", "Add item →", self._on_item_search, self._add_item
         )
+        # Seed both result lists with the full catalog up-front. Without this
+        # the lists stay empty until the first keystroke (they only refill on
+        # <KeyRelease>), so they appeared blank until you typed then deleted.
+        self._run_mrc_search("")
+        self._run_item_search("")
 
         # Right: lines
         right = ttk.LabelFrame(pane, text="Request lines", padding=6)
